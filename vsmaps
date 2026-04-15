@@ -362,7 +362,9 @@ deploy_all_helm_charts() {
         count=$((count + 1))
 
         echo -e "\n${YELLOW}[${count}/${total}]${NC} Deploying ${release}..."
-        deploy_helm_chart "${release}" "${chart_path}" "${timeout}"
+        if ! deploy_helm_chart "${release}" "${chart_path}" "${timeout}"; then
+            log_warn "Failed to deploy ${release}, continuing with remaining charts..."
+        fi
     done
 
     log_success "All Helm charts deployed"
