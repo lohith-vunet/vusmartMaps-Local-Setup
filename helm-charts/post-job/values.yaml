@@ -1,6 +1,6 @@
 # vulauncher will update this section while deployment
 vunet:
-  imageServer: &imageServer vunet-registry:5000
+  imageServer: &imageServer ghcr.io
   imageName: &imageName vunetsystems/cairo
   imageTag: &imageTag 2.16.901
   vublockStoreImage: &vublockStoreImage vunetsystems/vublock-store

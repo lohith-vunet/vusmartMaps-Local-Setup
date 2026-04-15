@@ -483,14 +483,9 @@ cmd_upgrade() {
                 found=1
                 local full_chart_path="${HELM_CHARTS_DIR}/${chart_path}"
 
-                # Reload images for this component if available
+                # Reload images if images directory exists (uses skip optimization)
                 if [ -d "${IMAGES_DIR}" ]; then
-                    log_info "Checking for updated images..."
-                    local tar_files
-                    tar_files=$(find "${IMAGES_DIR}" -name "*.tar" 2>/dev/null || true)
-                    for img in $tar_files; do
-                        kind load image-archive "$img" 2>/dev/null || true
-                    done
+                    load_images
                 fi
 
                 if helm status "${release}" -n "${NAMESPACE}" &>/dev/null; then
