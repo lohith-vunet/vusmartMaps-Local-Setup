@@ -13,6 +13,10 @@
 
 set -euo pipefail
 
+# ─── Global Flags ────────────────────────────────────────────────────────────
+
+FORCE_YES=false
+
 # ─── Configuration ───────────────────────────────────────────────────────────
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -36,6 +40,7 @@ NC='\033[0m' # No Color
 # Helm chart deployment order with their paths relative to helm-charts/
 # Format: "release_name:chart_path:timeout"
 HELM_DEPLOY_ORDER=(
+    "postgresql:postgresql:5m"
     "keycloak:keycloak:5m"
     "denver:denver:5m"
     "minio-operator:minio/operator:5m"
@@ -232,7 +237,7 @@ load_images() {
         local basename
         basename=$(basename "$img")
         log_info "[${count}/${total}] Loading ${basename}..."
-        if sudo kind load image-archive "$img" 2>/dev/null; then
+        if kind load image-archive "$img" 2>/dev/null; then
             log_success "Loaded ${basename}"
         else
             log_warn "Failed to load ${basename}, continuing..."
@@ -247,25 +252,38 @@ load_images() {
 create_storage_directories() {
     log_step "Creating persistent storage directories"
 
+    local kind_container
+    kind_container=$(docker ps --filter "name=kind-control-plane" --format '{{.Names}}' | head -1)
+
+    if [ -z "$kind_container" ]; then
+        log_error "Kind control-plane container not found"
+        exit 1
+    fi
+
     for dir in "${STORAGE_DIRS[@]}"; do
-        sudo mkdir -p "$dir"
+        docker exec "$kind_container" mkdir -p "$dir"
         log_success "Created ${dir}"
     done
 
     # PostgreSQL needs specific ownership
-    sudo chown -R 1001:1000 "${DATA_ROOT}/postgresql"
+    docker exec "$kind_container" chown -R 1001:1000 "${DATA_ROOT}/postgresql"
     log_success "Set ownership for PostgreSQL directory"
 }
 
 cleanup_storage_directories() {
     log_step "Cleaning up persistent storage directories"
 
-    for dir in "${STORAGE_DIRS[@]}"; do
-        if [ -d "$dir" ]; then
-            sudo rm -rf "$dir"
+    local kind_container
+    kind_container=$(docker ps --filter "name=kind-control-plane" --format '{{.Names}}' | head -1)
+
+    if [ -n "$kind_container" ]; then
+        for dir in "${STORAGE_DIRS[@]}"; do
+            docker exec "$kind_container" rm -rf "$dir" 2>/dev/null || true
             log_success "Removed ${dir}"
-        fi
-    done
+        done
+    else
+        log_warn "Kind container not running, skipping storage cleanup"
+    fi
 }
 
 # ─── Helm Chart Deployment ──────────────────────────────────────────────────
@@ -282,12 +300,12 @@ wait_for_pods_ready() {
     while [ "$(date +%s)" -lt "$end_time" ]; do
         local not_ready
         not_ready=$(kubectl get pods -n "${namespace}" -l "app.kubernetes.io/instance=${release}" \
-            --no-headers 2>/dev/null | grep -v -E "Running|Completed" | wc -l)
+            --no-headers 2>/dev/null | awk '!/Running|Completed/{c++} END{print c+0}')
 
         # Also check for pods with the release name directly (some charts don't use standard labels)
         local not_ready2
         not_ready2=$(kubectl get pods -n "${namespace}" --no-headers 2>/dev/null | \
-            grep "^${release}" | grep -v -E "Running|Completed" | wc -l)
+            awk -v rel="^${release}" '$0 ~ rel && !/Running|Completed/{c++} END{print c+0}')
 
         if [ "$not_ready" -eq 0 ] && [ "$not_ready2" -eq 0 ]; then
             return 0
@@ -329,7 +347,7 @@ deploy_helm_chart() {
 
     # Wait for pods to be ready before proceeding
     local timeout_secs
-    timeout_secs=$(echo "${timeout}" | sed 's/m/*60/' | bc 2>/dev/null || echo 300)
+    timeout_secs=$(( ${timeout%m} * 60 ))
     wait_for_pods_ready "${release}" "${timeout_secs}" "${NAMESPACE}"
 }
 
@@ -385,10 +403,12 @@ cmd_reset() {
     echo -e "${CYAN}╚══════════════════════════════════════════════════════════════╝${NC}\n"
 
     log_warn "This will destroy the existing environment and reinstall from scratch."
-    read -p "Are you sure? (y/N): " confirm
-    if [[ ! "${confirm}" =~ ^[Yy]$ ]]; then
-        log_info "Reset cancelled."
-        exit 0
+    if [ "$FORCE_YES" != true ]; then
+        read -p "Are you sure? (y/N): " confirm
+        if [[ ! "${confirm}" =~ ^[Yy]$ ]]; then
+            log_info "Reset cancelled."
+            exit 0
+        fi
     fi
 
     delete_kind_cluster
@@ -448,7 +468,7 @@ cmd_upgrade() {
                     local tar_files
                     tar_files=$(find "${IMAGES_DIR}" -name "*.tar" 2>/dev/null || true)
                     for img in $tar_files; do
-                        sudo kind load image-archive "$img" 2>/dev/null || true
+                        kind load image-archive "$img" 2>/dev/null || true
                     done
                 fi
 
@@ -490,26 +510,6 @@ cmd_load_data() {
         exit 0
     fi
 
-    # Load ClickHouse fixtures
-    if ls "${FIXTURES_DIR}"/clickhouse_*.sql &>/dev/null; then
-        log_info "Loading ClickHouse fixtures..."
-        local ch_pod
-        ch_pod=$(kubectl get pods -n "${NAMESPACE}" -l "clickhouse.altinity.com/app=chop" -o jsonpath='{.items[0].metadata.name}' 2>/dev/null || true)
-        if [ -n "$ch_pod" ]; then
-            for f in "${FIXTURES_DIR}"/clickhouse_*.sql; do
-                local fname
-                fname=$(basename "$f")
-                log_info "  Loading ${fname}..."
-                kubectl cp "$f" "${NAMESPACE}/${ch_pod}:/tmp/${fname}" -c clickhouse
-                kubectl exec -n "${NAMESPACE}" "${ch_pod}" -c clickhouse -- clickhouse-client --query "$(cat "$f")" 2>/dev/null || \
-                kubectl exec -n "${NAMESPACE}" "${ch_pod}" -c clickhouse -- bash -c "clickhouse-client < /tmp/${fname}"
-                log_success "  Loaded ${fname}"
-            done
-        else
-            log_warn "ClickHouse pod not found, skipping ClickHouse fixtures"
-        fi
-    fi
-
     # Load PostgreSQL fixtures
     if ls "${FIXTURES_DIR}"/postgresql_*.sql &>/dev/null; then
         log_info "Loading PostgreSQL fixtures..."
@@ -521,11 +521,37 @@ cmd_load_data() {
                 fname=$(basename "$f")
                 log_info "  Loading ${fname}..."
                 kubectl cp "$f" "${NAMESPACE}/${pg_pod}:/tmp/${fname}"
-                kubectl exec -n "${NAMESPACE}" "${pg_pod}" -- bash -c "PGPASSWORD=\$POSTGRES_PASSWORD psql -U postgres -d vunet < /tmp/${fname}"
+                kubectl exec -n "${NAMESPACE}" "${pg_pod}" -- bash -c \
+                    "PGPASSWORD=vusmart psql -U vusmart -d multicore -f /tmp/${fname}" 2>&1 || \
+                kubectl exec -n "${NAMESPACE}" "${pg_pod}" -- bash -c \
+                    "PGPASSWORD=\$POSTGRES_PASSWORD psql -U postgres -d multicore -f /tmp/${fname}" 2>&1
                 log_success "  Loaded ${fname}"
             done
         else
             log_warn "PostgreSQL pod not found, skipping PostgreSQL fixtures"
+        fi
+    fi
+
+    # Load ClickHouse fixtures
+    if ls "${FIXTURES_DIR}"/clickhouse_*.sql &>/dev/null; then
+        log_info "Loading ClickHouse fixtures..."
+        local ch_pod
+        ch_pod=$(kubectl get pods -n "${NAMESPACE}" -l "clickhouse.altinity.com/app=chop" -o jsonpath='{.items[0].metadata.name}' 2>/dev/null || true)
+        if [ -n "$ch_pod" ]; then
+            for f in "${FIXTURES_DIR}"/clickhouse_*.sql; do
+                local fname
+                fname=$(basename "$f")
+                log_info "  Loading ${fname}..."
+                kubectl cp "$f" "${NAMESPACE}/${ch_pod}:/tmp/${fname}" -c clickhouse
+                kubectl exec -n "${NAMESPACE}" "${ch_pod}" -c clickhouse -- \
+                    clickhouse-client --user vusmartmanager --password 'Vunet#1234' \
+                    --multiquery < "$f" 2>/dev/null || \
+                kubectl exec -n "${NAMESPACE}" "${ch_pod}" -c clickhouse -- bash -c \
+                    "clickhouse-client --user vusmartmanager --password 'Vunet#1234' < /tmp/${fname}"
+                log_success "  Loaded ${fname}"
+            done
+        else
+            log_warn "ClickHouse pod not found, skipping ClickHouse fixtures"
         fi
     fi
 
@@ -559,31 +585,12 @@ cmd_clear_data() {
     echo -e "${CYAN}╚══════════════════════════════════════════════════════════════╝${NC}\n"
 
     log_warn "This will clear all test data from ClickHouse, PostgreSQL, and Kafka."
-    read -p "Are you sure? (y/N): " confirm
-    if [[ ! "${confirm}" =~ ^[Yy]$ ]]; then
-        log_info "Clear cancelled."
-        exit 0
-    fi
-
-    # Clear ClickHouse data
-    local ch_pod
-    ch_pod=$(kubectl get pods -n "${NAMESPACE}" -l "clickhouse.altinity.com/app=chop" -o jsonpath='{.items[0].metadata.name}' 2>/dev/null || true)
-    if [ -n "$ch_pod" ]; then
-        log_info "Clearing ClickHouse fixture data..."
-        if ls "${FIXTURES_DIR}"/clickhouse_*.sql &>/dev/null; then
-            for f in "${FIXTURES_DIR}"/clickhouse_*.sql; do
-                local table
-                table=$(grep -ioP '(?<=INSERT INTO\s)\S+' "$f" | head -1 || true)
-                if [ -n "$table" ]; then
-                    kubectl exec -n "${NAMESPACE}" "${ch_pod}" -c clickhouse -- \
-                        clickhouse-client --query "TRUNCATE TABLE IF EXISTS ${table}" 2>/dev/null || true
-                    log_success "  Cleared ${table}"
-                fi
-            done
+    if [ "$FORCE_YES" != true ]; then
+        read -p "Are you sure? (y/N): " confirm
+        if [[ ! "${confirm}" =~ ^[Yy]$ ]]; then
+            log_info "Clear cancelled."
+            exit 0
         fi
-        log_success "ClickHouse data cleared"
-    else
-        log_warn "ClickHouse pod not found, skipping"
     fi
 
     # Clear PostgreSQL fixture data
@@ -597,7 +604,7 @@ cmd_clear_data() {
                 tables=$(grep -ioP '(?<=INSERT INTO\s)\S+' "$f" | sort -u || true)
                 for table in $tables; do
                     kubectl exec -n "${NAMESPACE}" "${pg_pod}" -- \
-                        bash -c "PGPASSWORD=\$POSTGRES_PASSWORD psql -U postgres -d vunet -c 'TRUNCATE TABLE ${table} CASCADE;'" 2>/dev/null || true
+                        bash -c "PGPASSWORD=vusmart psql -U vusmart -d multicore -c 'DELETE FROM ${table} WHERE true;'" 2>/dev/null || true
                     log_success "  Cleared ${table}"
                 done
             done
@@ -605,6 +612,28 @@ cmd_clear_data() {
         log_success "PostgreSQL data cleared"
     else
         log_warn "PostgreSQL pod not found, skipping"
+    fi
+
+    # Clear ClickHouse fixture data
+    local ch_pod
+    ch_pod=$(kubectl get pods -n "${NAMESPACE}" -l "clickhouse.altinity.com/app=chop" -o jsonpath='{.items[0].metadata.name}' 2>/dev/null || true)
+    if [ -n "$ch_pod" ]; then
+        log_info "Clearing ClickHouse fixture data..."
+        if ls "${FIXTURES_DIR}"/clickhouse_*.sql &>/dev/null; then
+            for f in "${FIXTURES_DIR}"/clickhouse_*.sql; do
+                local table
+                table=$(grep -ioP '(?<=INSERT INTO\s)\S+' "$f" | head -1 || true)
+                if [ -n "$table" ]; then
+                    kubectl exec -n "${NAMESPACE}" "${ch_pod}" -c clickhouse -- \
+                        clickhouse-client --user vusmartmanager --password 'Vunet#1234' \
+                        --query "TRUNCATE TABLE IF EXISTS ${table}" 2>/dev/null || true
+                    log_success "  Cleared ${table}"
+                fi
+            done
+        fi
+        log_success "ClickHouse data cleared"
+    else
+        log_warn "ClickHouse pod not found, skipping"
     fi
 
     log_success "Test data clearing complete"
@@ -638,10 +667,12 @@ cmd_status() {
     # Summary
     echo ""
     local total running completed failed other
-    total=$(kubectl get pods -n "${NAMESPACE}" --no-headers 2>/dev/null | wc -l)
-    running=$(kubectl get pods -n "${NAMESPACE}" --no-headers 2>/dev/null | grep -c "Running" || true)
-    completed=$(kubectl get pods -n "${NAMESPACE}" --no-headers 2>/dev/null | grep -c "Completed" || true)
-    failed=$(kubectl get pods -n "${NAMESPACE}" --no-headers 2>/dev/null | grep -cE "Error|CrashLoopBackOff|ImagePullBackOff" || true)
+    local pod_lines
+    pod_lines=$(kubectl get pods -n "${NAMESPACE}" --no-headers 2>/dev/null || true)
+    total=$(echo "$pod_lines" | awk 'NF{c++} END{print c+0}')
+    running=$(echo "$pod_lines" | awk '/Running/{c++} END{print c+0}')
+    completed=$(echo "$pod_lines" | awk '/Completed/{c++} END{print c+0}')
+    failed=$(echo "$pod_lines" | awk '/Error|CrashLoopBackOff|ImagePullBackOff/{c++} END{print c+0}')
     other=$((total - running - completed - failed))
 
     echo -e "  ${BLUE}Total pods:${NC}     ${total}"
@@ -663,7 +694,7 @@ cmd_status() {
 usage() {
     echo -e "${CYAN}vuSmartMaps Local Environment CLI${NC}"
     echo ""
-    echo "Usage: $(basename "$0") <command> [options]"
+    echo "Usage: $(basename "$0") [--yes] <command> [options]"
     echo ""
     echo "Commands:"
     echo "  install              Install the full vuSmartMaps local environment"
@@ -672,6 +703,9 @@ usage() {
     echo "  load-data            Load dummy data fixtures into the environment"
     echo "  clear-data           Clear all test data from the environment"
     echo "  status               Show current environment status"
+    echo ""
+    echo "Flags:"
+    echo "  -y, --yes            Skip confirmation prompts"
     echo ""
     echo "Components for selective upgrade:"
     for entry in "${HELM_DEPLOY_ORDER[@]}"; do
@@ -688,27 +722,43 @@ usage() {
 }
 
 main() {
-    local command="${1:-}"
-    shift || true
+    # Parse global flags
+    local args=()
+    for arg in "$@"; do
+        case "$arg" in
+            -y|--yes)
+                FORCE_YES=true
+                ;;
+            *)
+                args+=("$arg")
+                ;;
+        esac
+    done
+
+    local command="${args[0]:-}"
+    local remaining=()
+    if [ ${#args[@]} -gt 1 ]; then
+        remaining=("${args[@]:1}")
+    fi
 
     case "$command" in
         install)
-            cmd_install "$@"
+            cmd_install "${remaining[@]}"
             ;;
         reset)
-            cmd_reset "$@"
+            cmd_reset "${remaining[@]}"
             ;;
         upgrade)
-            cmd_upgrade "$@"
+            cmd_upgrade "${remaining[@]}"
             ;;
         load-data)
-            cmd_load_data "$@"
+            cmd_load_data "${remaining[@]}"
             ;;
         clear-data)
-            cmd_clear_data "$@"
+            cmd_clear_data "${remaining[@]}"
             ;;
         status)
-            cmd_status "$@"
+            cmd_status "${remaining[@]}"
             ;;
         -h|--help|help|"")
             usage
