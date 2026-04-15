@@ -538,7 +538,7 @@ cmd_load_data() {
     if ls "${FIXTURES_DIR}"/clickhouse_*.sql &>/dev/null; then
         log_info "Loading ClickHouse fixtures..."
         local ch_pod
-        ch_pod=$(kubectl get pods -n "${NAMESPACE}" -l "clickhouse.altinity.com/app=chop" -o jsonpath='{.items[0].metadata.name}' 2>/dev/null || true)
+        ch_pod=$(kubectl get pods -n "${NAMESPACE}" -l "clickhouse.altinity.com/chi=clickhouse" -o jsonpath='{.items[0].metadata.name}' 2>/dev/null || true)
         if [ -n "$ch_pod" ]; then
             for f in "${FIXTURES_DIR}"/clickhouse_*.sql; do
                 local fname
@@ -546,10 +546,7 @@ cmd_load_data() {
                 log_info "  Loading ${fname}..."
                 kubectl cp "$f" "${NAMESPACE}/${ch_pod}:/tmp/${fname}" -c clickhouse
                 kubectl exec -n "${NAMESPACE}" "${ch_pod}" -c clickhouse -- \
-                    clickhouse-client --user vusmartmanager --password 'Vunet#1234' \
-                    --multiquery < "$f" 2>/dev/null || \
-                kubectl exec -n "${NAMESPACE}" "${ch_pod}" -c clickhouse -- bash -c \
-                    "clickhouse-client --user vusmartmanager --password 'Vunet#1234' < /tmp/${fname}"
+                    bash -c "clickhouse-client --user vusmartmanager --password 'Vunet#1234' --multiquery < /tmp/${fname}"
                 log_success "  Loaded ${fname}"
             done
         else
@@ -618,7 +615,7 @@ cmd_clear_data() {
 
     # Clear ClickHouse fixture data
     local ch_pod
-    ch_pod=$(kubectl get pods -n "${NAMESPACE}" -l "clickhouse.altinity.com/app=chop" -o jsonpath='{.items[0].metadata.name}' 2>/dev/null || true)
+    ch_pod=$(kubectl get pods -n "${NAMESPACE}" -l "clickhouse.altinity.com/chi=clickhouse" -o jsonpath='{.items[0].metadata.name}' 2>/dev/null || true)
     if [ -n "$ch_pod" ]; then
         log_info "Clearing ClickHouse fixture data..."
         if ls "${FIXTURES_DIR}"/clickhouse_*.sql &>/dev/null; then

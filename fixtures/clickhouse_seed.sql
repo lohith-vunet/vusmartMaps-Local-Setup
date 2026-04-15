@@ -1,26 +1,19 @@
 -- vuSmartMaps ClickHouse Seed Data
 -- Loads sample monitoring data for local development validation
--- Target: monitoring database on clickhouse cluster 'vusmart'
+-- Target: monitoring database, cpu_data table
 
--- Insert sample monitoring data (simulates Telegraf metrics)
-INSERT INTO monitoring.monitoring_data (
-    timestamp, host, measurement, field, value
+INSERT INTO monitoring.cpu_data (
+    timestamp, host, cpu,
+    usage_user, usage_system, usage_idle, usage_active,
+    usage_iowait, usage_irq, usage_softirq, usage_steal,
+    usage_guest, usage_guest_nice, usage_nice,
+    time_user, time_system, time_idle, time_active,
+    time_iowait, time_irq, time_softirq, time_steal,
+    time_guest, time_guest_nice, time_nice
 ) VALUES
-    (now() - INTERVAL 10 MINUTE, 'test-server-1', 'cpu', 'usage_percent', 45.2),
-    (now() - INTERVAL 10 MINUTE, 'test-server-1', 'memory', 'usage_percent', 62.8),
-    (now() - INTERVAL 10 MINUTE, 'test-server-1', 'disk', 'usage_percent', 38.5),
-    (now() - INTERVAL 10 MINUTE, 'test-server-2', 'cpu', 'usage_percent', 72.1),
-    (now() - INTERVAL 10 MINUTE, 'test-server-2', 'memory', 'usage_percent', 81.3),
-    (now() - INTERVAL 10 MINUTE, 'test-server-2', 'disk', 'usage_percent', 55.9),
-    (now() - INTERVAL 5 MINUTE, 'test-server-1', 'cpu', 'usage_percent', 48.7),
-    (now() - INTERVAL 5 MINUTE, 'test-server-1', 'memory', 'usage_percent', 63.1),
-    (now() - INTERVAL 5 MINUTE, 'test-server-1', 'disk', 'usage_percent', 38.6),
-    (now() - INTERVAL 5 MINUTE, 'test-server-2', 'cpu', 'usage_percent', 68.4),
-    (now() - INTERVAL 5 MINUTE, 'test-server-2', 'memory', 'usage_percent', 79.5),
-    (now() - INTERVAL 5 MINUTE, 'test-server-2', 'disk', 'usage_percent', 56.1),
-    (now(), 'test-server-1', 'cpu', 'usage_percent', 51.3),
-    (now(), 'test-server-1', 'memory', 'usage_percent', 64.2),
-    (now(), 'test-server-1', 'disk', 'usage_percent', 38.7),
-    (now(), 'test-server-2', 'cpu', 'usage_percent', 70.9),
-    (now(), 'test-server-2', 'memory', 'usage_percent', 80.1),
-    (now(), 'test-server-2', 'disk', 'usage_percent', 56.3);
+    (now() - toIntervalMinute(10), 'test-server-1', 'cpu-total', 25.3, 5.1, 69.6, 30.4, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0),
+    (now() - toIntervalMinute(10), 'test-server-2', 'cpu-total', 42.7, 8.3, 49.0, 51.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0),
+    (now() - toIntervalMinute(5), 'test-server-1', 'cpu-total', 28.1, 6.2, 65.7, 34.3, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0),
+    (now() - toIntervalMinute(5), 'test-server-2', 'cpu-total', 38.9, 7.1, 54.0, 46.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0),
+    (now(), 'test-server-1', 'cpu-total', 31.5, 4.8, 63.7, 36.3, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0),
+    (now(), 'test-server-2', 'cpu-total', 45.2, 9.6, 45.2, 54.8, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0);
