@@ -134,8 +134,13 @@ check_prerequisites() {
     fi
 
     if ! command -v helm &>/dev/null; then
-        log_error "Helm is not installed"
-        missing=1
+        log_info "Helm not found, installing automatically..."
+        if curl -fsSL https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3 | bash 2>/dev/null; then
+            log_success "Helm installed: $(helm version --short)"
+        else
+            log_error "Failed to install Helm automatically. Install it manually."
+            missing=1
+        fi
     else
         log_success "Helm found: $(helm version --short)"
     fi
@@ -634,14 +639,14 @@ cmd_clear_data() {
         log_info "Clearing ClickHouse fixture data..."
         if ls "${FIXTURES_DIR}"/clickhouse_*.sql &>/dev/null; then
             for f in "${FIXTURES_DIR}"/clickhouse_*.sql; do
-                local table
-                table=$(grep -ioP '(?<=INSERT INTO\s)\S+' "$f" | head -1 || true)
-                if [ -n "$table" ]; then
+                local tables
+                tables=$(grep -ioP '(?<=INSERT INTO\s)\S+' "$f" | sort -u || true)
+                for table in $tables; do
                     kubectl exec -n "${NAMESPACE}" "${ch_pod}" -c clickhouse -- \
                         clickhouse-client --user vusmartmanager --password 'Vunet#1234' \
                         --query "TRUNCATE TABLE IF EXISTS ${table}" 2>/dev/null || true
                     log_success "  Cleared ${table}"
-                fi
+                done
             done
         fi
         log_success "ClickHouse data cleared"

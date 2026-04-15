@@ -8,11 +8,11 @@ vunet:
   # cpu and memory min and max values
   resources: &resources
     limits:
-      cpu: "1"
-      memory: 2Gi
+      cpu: "0.3"
+      memory: 512Mi
     requests:
-      cpu: "0.5"
-      memory: 500Mi
+      cpu: "0.1"
+      memory: 256Mi
   # priority node labels
   nodeAffinity: &nodeAffinity
     preferredDuringSchedulingIgnoredDuringExecution:
