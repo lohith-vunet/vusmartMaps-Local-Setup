@@ -6,11 +6,11 @@ vunet:
   # cpu and memory min and max values
   resources: &resources
     limits:
-      cpu: "3"
-      memory: 2Gi
+      cpu: "0.5"
+      memory: 1Gi
     requests:
-      cpu: "0.3"
-      memory: 500Mi
+      cpu: "0.1"
+      memory: 256Mi
   # priority node labels
   nodeAffinity: &nodeAffinity {}
   # tolerations
@@ -120,8 +120,8 @@ deployment:
         - "node2"
     resources:
       limits:
-        cpu: "4000m"
-        memory: "16Gi"
+        cpu: "500m"
+        memory: "1Gi"
       requests:
-        cpu: "1000m"
-        memory: "512Mi"
+        cpu: "100m"
+        memory: "256Mi"
