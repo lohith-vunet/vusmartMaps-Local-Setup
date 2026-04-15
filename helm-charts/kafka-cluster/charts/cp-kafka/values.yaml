@@ -315,7 +315,7 @@ pvMapping:
   "0":
     nodeName: e2e-102-161
     hostPath: /data1
-    size: 12Gi
+    size: 5Gi
     storageClass: local-storage
     dirPath: kafka_dir
     nodeIP: 216.48.185.161
