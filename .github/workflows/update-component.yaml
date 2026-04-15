@@ -1,0 +1,84 @@
+name: Update Component
+
+# Triggered manually or via API when a new image/chart version is available
+on:
+  workflow_dispatch:
+    inputs:
+      component:
+        description: 'Component to update (e.g., nairobi, denver, keycloak)'
+        required: true
+        type: string
+      image_tag:
+        description: 'New Docker image tag (e.g., 2.16.0.1982)'
+        required: true
+        type: string
+      image_name:
+        description: 'Docker image name (e.g., nairobi)'
+        required: true
+        type: string
+
+jobs:
+  create-update-pr:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Determine chart path
+        id: chart
+        run: |
+          component="${{ github.event.inputs.component }}"
+          # Map component names to chart paths
+          case "$component" in
+            ch-operator)  path="clickhouse/ch-operator" ;;
+            ch-keeper)    path="clickhouse/ch-keeper" ;;
+            ch-database)  path="clickhouse/ch-database" ;;
+            minio-operator) path="minio/operator" ;;
+            minio-tenant) path="minio/tenant" ;;
+            telegraf-vumsart) path="telegraf/vusmart" ;;
+            telegraf-infra) path="telegraf/infra" ;;
+            *) path="$component" ;;
+          esac
+          echo "path=$path" >> $GITHUB_OUTPUT
+          echo "Chart path: helm-charts/$path"
+
+      - name: Update image tag in values.yaml
+        run: |
+          values_file="helm-charts/${{ steps.chart.outputs.path }}/values.yaml"
+          if [ ! -f "$values_file" ]; then
+            echo "ERROR: $values_file not found"
+            exit 1
+          fi
+
+          image_name="${{ github.event.inputs.image_name }}"
+          new_tag="${{ github.event.inputs.image_tag }}"
+
+          echo "Updating $image_name to tag $new_tag in $values_file"
+
+          # Update imageTag in values.yaml
+          sed -i "s|imageTag:.*${image_name}.*|imageTag: \&imageTag ${new_tag}|" "$values_file" 2>/dev/null || true
+          sed -i "s|tag:.*# ${image_name}|tag: ${new_tag} # ${image_name}|" "$values_file" 2>/dev/null || true
+
+          # Show changes
+          git diff "$values_file"
+
+      - name: Create Pull Request
+        uses: peter-evans/create-pull-request@v6
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          commit-message: "Update ${{ github.event.inputs.component }} to ${{ github.event.inputs.image_tag }}"
+          title: "Update ${{ github.event.inputs.component }} to ${{ github.event.inputs.image_tag }}"
+          body: |
+            ## Component Update
+
+            - **Component:** ${{ github.event.inputs.component }}
+            - **Image:** ${{ github.event.inputs.image_name }}
+            - **New Tag:** ${{ github.event.inputs.image_tag }}
+
+            This PR was automatically created by the component update workflow.
+
+            ## Checklist
+            - [ ] Verify the image tag is correct
+            - [ ] Confirm the new image is available in the tarball
+            - [ ] Test locally with `./vsmaps upgrade ${{ github.event.inputs.component }}`
+          branch: "update/${{ github.event.inputs.component }}-${{ github.event.inputs.image_tag }}"
+          labels: automated,component-update

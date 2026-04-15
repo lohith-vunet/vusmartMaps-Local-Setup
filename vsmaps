@@ -231,20 +231,39 @@ load_images() {
     local total
     total=$(echo "$tar_files" | wc -l)
     local count=0
+    local skipped=0
+    local loaded=0
+
+    # Get list of images already in the Kind cluster for skip optimization
+    local existing_images=""
+    existing_images=$(docker exec kind-control-plane crictl images -o json 2>/dev/null | \
+        python3 -c "import sys,json; imgs=json.load(sys.stdin).get('images',[]); [print(t) for i in imgs for t in i.get('repoTags',[])]" 2>/dev/null || true)
 
     for img in $tar_files; do
         count=$((count + 1))
-        local basename
-        basename=$(basename "$img")
-        log_info "[${count}/${total}] Loading ${basename}..."
+        local fname
+        fname=$(basename "$img")
+
+        # Extract image name from tar filename to check if already loaded
+        # Format: name_tag.tar -> check if any matching image exists
+        local img_base
+        img_base=$(echo "$fname" | sed 's/\.tar$//' | sed 's/_/:/')
+        if echo "$existing_images" | grep -qi "${img_base%%:*}" 2>/dev/null; then
+            log_info "[${count}/${total}] Skipping ${fname} (already loaded)"
+            skipped=$((skipped + 1))
+            continue
+        fi
+
+        log_info "[${count}/${total}] Loading ${fname}..."
         if kind load image-archive "$img" 2>/dev/null; then
-            log_success "Loaded ${basename}"
+            log_success "Loaded ${fname}"
+            loaded=$((loaded + 1))
         else
-            log_warn "Failed to load ${basename}, continuing..."
+            log_warn "Failed to load ${fname}, continuing..."
         fi
     done
 
-    log_success "Image loading complete (${total} images)"
+    log_success "Image loading complete (${loaded} loaded, ${skipped} skipped, ${total} total)"
 }
 
 # ─── Persistent Storage ─────────────────────────────────────────────────────

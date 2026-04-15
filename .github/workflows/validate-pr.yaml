@@ -1,0 +1,78 @@
+name: Validate PR
+
+on:
+  pull_request:
+    branches: [main]
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Validate vsmaps CLI syntax
+        run: bash -n vsmaps
+
+      - name: Validate kind-config.yaml
+        run: |
+          if [ ! -f kind-config.yaml ]; then
+            echo "ERROR: kind-config.yaml missing"
+            exit 1
+          fi
+          # Check it's valid YAML
+          python3 -c "import yaml; yaml.safe_load(open('kind-config.yaml'))"
+
+      - name: Validate Helm charts exist
+        run: |
+          required_charts=(
+            keycloak denver postgresql
+            minio/operator minio/tenant
+            orchestrator kafka-cluster
+            clickhouse/ch-operator clickhouse/ch-keeper clickhouse/ch-database
+            telegraf/vusmart telegraf/infra
+            nairobi traefik redis docs
+            vublock-store vunodes post-job
+          )
+          missing=0
+          for chart in "${required_charts[@]}"; do
+            if [ ! -f "helm-charts/${chart}/Chart.yaml" ]; then
+              echo "ERROR: Missing helm-charts/${chart}/Chart.yaml"
+              missing=1
+            fi
+          done
+          if [ "$missing" -eq 1 ]; then
+            exit 1
+          fi
+          echo "All required Helm charts present"
+
+      - name: Validate cluster-setup manifests
+        run: |
+          for f in cluster-setup/*.yaml; do
+            echo "Validating $f..."
+            python3 -c "import yaml; yaml.safe_load(open('$f'))"
+          done
+          echo "All manifests valid"
+
+      - name: Validate fixture SQL files
+        run: |
+          for f in fixtures/*.sql; do
+            if [ -f "$f" ]; then
+              echo "Checking $f..."
+              # Basic syntax: no empty files, has SQL content
+              if [ ! -s "$f" ]; then
+                echo "ERROR: $f is empty"
+                exit 1
+              fi
+            fi
+          done
+          echo "All fixtures valid"
+
+      - name: Check no secrets committed
+        run: |
+          # Scan for common secret patterns
+          if grep -rE "(password|secret|token|api_key)\s*[:=]\s*['\"][^'\"]{8,}" \
+            --include="*.yaml" --include="*.yml" --include="*.json" --include="*.sh" \
+            --exclude-dir=.git . 2>/dev/null | grep -v "POSTGRES_PASSWORD" | grep -v "changeit" | head -5; then
+            echo "WARNING: Potential secrets found in committed files (review above)"
+          fi
+          echo "Secret scan complete"

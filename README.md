@@ -139,8 +139,8 @@ Once complete, access the UI at **https://localhost/vui**
 
 The `fixtures/` directory contains seed data files that can be loaded into the running environment:
 
-- `postgresql_seed.sql` — Sample alert rules, device groups, and collection configs
-- `clickhouse_seed.sql` — Sample monitoring metrics data
+- `postgresql_seed.sql` — Sample cache entries in vusoft_vusoftcache
+- `clickhouse_seed.sql` — Sample CPU monitoring metrics in monitoring.cpu_data
 
 Load fixtures: `./vsmaps load-data`
 Clear fixtures: `./vsmaps clear-data`
@@ -151,10 +151,47 @@ All changes to this repository must go through Pull Requests:
 
 1. Create a feature branch from `main`
 2. Make your changes (Helm chart updates, new images, fixture changes)
-3. Open a PR for review
-4. A senior team member reviews and merges
+3. Open a PR for review — CI validation runs automatically
+4. A code owner (designated senior member) reviews and merges
 
-Historical versions are preserved in git history — checkout any previous tag/commit to get that version's setup.
+**Branch protection is enforced:**
+- Direct pushes to `main` are blocked
+- At least 1 approving review required
+- Stale reviews are dismissed on new pushes
+- Force pushes and branch deletion are blocked
+
+### Automated Component Updates
+
+When a new version of a vuSmartMaps component is built, trigger the update workflow:
+
+```bash
+gh workflow run update-component.yaml \
+  -f component=nairobi \
+  -f image_name=nairobi \
+  -f image_tag=2.16.0.1982
+```
+
+This automatically creates a PR with the updated image tag for review.
+
+### CI Validation
+
+Every PR is validated automatically:
+- CLI script syntax check
+- kind-config.yaml YAML validity
+- All required Helm charts present
+- Cluster-setup manifests valid
+- Fixture SQL files non-empty
+- Secret scan for accidentally committed credentials
+
+### Historical Versions
+
+All previous versions are preserved in git history. To run an older version:
+
+```bash
+git log --oneline                    # Find the commit/tag
+git checkout <commit-hash>           # Switch to that version
+./vsmaps install                     # Deploy that version
+```
 
 ## Troubleshooting
 
