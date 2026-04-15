@@ -1,0 +1,19 @@
+apiVersion: v1
+kind: Service
+metadata:
+  labels:
+    organization: vunet
+    io.kompose.service: docs-vunet
+  name: {{ .Values.docsService.name }}
+spec:
+  type: ClusterIP
+  ports:
+    - name: "connection-port"
+      port: {{ .Values.docsService.ports.port }}
+      targetPort: {{ .Values.docsService.ports.targetPort }}
+    - name: "health-check"
+      port: {{ .Values.docsContainer.ports.healthCheckPort}}
+      targetPort: {{ .Values.docsContainer.ports.healthCheckPort}}
+  selector:
+    organization: vunet
+    io.kompose.service: docs-vunet

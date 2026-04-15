@@ -1,0 +1,7 @@
+#Service Account
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: pipeline-sa
+  namespace: vsmaps
+automountServiceAccountToken: false

@@ -1,0 +1,167 @@
+#
+vunet:
+    #
+    # dependencies will be list of helm chart path, which would be required for the current
+    # chart. We will install its dependant helm charts first, then current helm chart
+    # will be installed
+    dependencies:
+      - "longhorn"
+## ------------------------------------------------------
+## Zookeeper
+## ------------------------------------------------------
+cp-zookeeper:
+  enabled: true
+  #servers: 3
+  ## Optionally specify an array of imagePullSecrets. Secrets must be manually created in the namespace.
+  ## https://kubernetes.io/docs/concepts/containers/images/#specifying-imagepullsecrets-on-a-pod
+  #  - name: "regcred"
+  #heapOptions: "-Xms1G -Xmx1G"
+    #persistence:
+    #enabled: true
+    ## The size of the PersistentVolume to allocate to each Zookeeper Pod in the StatefulSet. For
+    ## production servers this number should likely be much larger.
+    ##
+    ## Size for Data dir, where ZooKeeper will store the in-memory database snapshots.
+    #dataDirSize: 5Gi
+    # dataDirStorageClass: ""
+    ## Size for data log dir, which is a dedicated log device to be used, and helps avoid competition between logging and snaphots.
+    #dataLogDirSize: 5Gi
+    # dataLogDirStorageClass: ""
+
+  # TODO: find correct security context for user in this zk-image
+  securityContext:
+    runAsUser: 1000
+
+  ## If you do want to specify resources, uncomment the following lines, adjust them as necessary,
+  ## and remove the curly braces after 'resources:'
+  ##  requests:
+  ##    cpu: "1000m"
+  ##    memory: "1Gi"
+  ##  limits:
+  ##    cpu: "2000m"
+  ##    memory: "2Gi"
+
+## ------------------------------------------------------
+## Kafka
+## ------------------------------------------------------
+cp-kafka:
+  enabled: true
+    #brokers: 3
+  ## Optionally specify an array of imagePullSecrets. Secrets must be manually created in the namespace.
+  ## https://kubernetes.io/docs/concepts/containers/images/#specifying-imagepullsecrets-on-a-pod
+  #  - name: "regcred"
+  #heapOptions: "-Xms1G -Xmx1G"
+    #persistence:
+    #enabled: true
+    # storageClass: ""
+    #size: 10Gi
+    #disksPerBroker: 1
+  ## If you do want to specify resources, uncomment the following lines, adjust them as necessary,
+  ## and remove the curly braces after 'resources:'
+  ##  requests:
+  ##    cpu: "3000m"
+  ##    memory: "4Gi"
+  ##  limits:
+  ##    cpu: "8000m"
+  ##    memory: "12Gi"
+  securityContext:
+    runAsUser: 1000
+
+## ------------------------------------------------------
+## Schema Registry
+## ------------------------------------------------------
+cp-schema-registry:
+  enabled: false
+  image: confluentinc/cp-schema-registry
+  imageTag: 6.1.0
+  ## Optionally specify an array of imagePullSecrets. Secrets must be manually created in the namespace.
+  ## https://kubernetes.io/docs/concepts/containers/images/#specifying-imagepullsecrets-on-a-pod
+  imagePullSecrets:
+  #  - name: "regcred"
+  heapOptions: "-Xms512M -Xmx512M"
+  resources: {}
+  ## If you do want to specify resources, uncomment the following lines, adjust them as necessary,
+  ## and remove the curly braces after 'resources:'
+  #  limits:
+  #   cpu: 100m
+  #   memory: 128Mi
+  #  requests:
+  #   cpu: 100m
+  #   memory: 128Mi
+
+## ------------------------------------------------------
+## REST Proxy
+## ------------------------------------------------------
+cp-kafka-rest:
+  enabled: false
+  image: confluentinc/cp-kafka-rest
+  imageTag: 6.1.0
+  ## Optionally specify an array of imagePullSecrets. Secrets must be manually created in the namespace.
+  ## https://kubernetes.io/docs/concepts/containers/images/#specifying-imagepullsecrets-on-a-pod
+  imagePullSecrets:
+  #  - name: "regcred"
+  heapOptions: "-Xms512M -Xmx512M"
+  resources: {}
+  ## If you do want to specify resources, uncomment the following lines, adjust them as necessary,
+  ## and remove the curly braces after 'resources:'
+  #  limits:
+  #   cpu: 100m
+  #   memory: 128Mi
+  #  requests:
+  #   cpu: 100m
+  #   memory: 128Mi
+
+## ------------------------------------------------------
+## Kafka Connect
+## ------------------------------------------------------
+cp-kafka-connect:
+  enabled: true
+  ## Optionally specify an array of imagePullSecrets. Secrets must be manually created in the namespace.
+  ## https://kubernetes.io/docs/concepts/containers/images/#specifying-imagepullsecrets-on-a-pod
+  #  - name: "regcred"
+  #heapOptions: "-Xms1G -Xmx1G"
+  ## If you do want to specify resources, uncomment the following lines, adjust them as necessary,
+  ## and remove the curly braces after 'resources:'
+  ##  requests:
+  ##    cpu: "1000m"
+  ##    memory: "512Mi"
+  ##  limits:
+  ##    cpu: "2000m"
+  ##    memory: "2Gi"
+
+## ------------------------------------------------------
+## KSQL Server
+## ------------------------------------------------------
+cp-ksql-server:
+  enabled: false
+  image: confluentinc/cp-ksqldb-server
+  imageTag: 6.1.0
+  ## Optionally specify an array of imagePullSecrets. Secrets must be manually created in the namespace.
+  ## https://kubernetes.io/docs/concepts/containers/images/#specifying-imagepullsecrets-on-a-pod
+  imagePullSecrets:
+  #  - name: "regcred"
+  heapOptions: "-Xms1G -Xmx1G"
+  ksql:
+    headless: false
+
+## ------------------------------------------------------
+## Control Center
+## ------------------------------------------------------
+cp-control-center:
+  enabled: false
+  image: confluentinc/cp-enterprise-control-center
+  imageTag: 6.1.0
+  ## Optionally specify an array of imagePullSecrets. Secrets must be manually created in the namespace.
+  ## https://kubernetes.io/docs/concepts/containers/images/#specifying-imagepullsecrets-on-a-pod
+  imagePullSecrets:
+  #  - name: "regcred"
+  heapOptions: "-Xms512M -Xmx512M"
+  resources: {}
+  ## If you do want to specify resources, uncomment the following lines, adjust them as necessary,
+  ## and remove the curly braces after 'resources:'
+  #  limits:
+  #   cpu: 100m
+  #   memory: 128Mi
+  #  requests:
+  #   cpu: 100m
+  #   memory: 128Mi

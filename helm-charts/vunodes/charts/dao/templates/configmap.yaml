@@ -1,0 +1,30 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: dao-vunode-config
+data:
+  vunode_config.yml: |-
+    {{- $celerySectionPrinted := false }}
+    {{- range $key, $value := .Values.dao.celery }}
+      {{- if $value.enable }}
+        {{- if not $celerySectionPrinted }}
+    celery:
+           {{- $celerySectionPrinted = true }}
+        {{- end }}
+      -
+        name: {{ $key }}_queue
+        args: -A daq.services.scan.celery.{{ $key }}_task worker -Q {{ $key }}_queue --max-tasks-per-child=1024 --detach --loglevel=error --pidfile=/tmp/celery.%n.{{ $key }}.pid --logfile=/tmp/celery.%n.{{ $key }}.log --autoscale={{ $value.autoscale }}
+        include_in_global_instance: False
+      {{- end }}
+    {{- end }}
+
+    nodes:
+      -
+        name: dao
+        services:
+        {{- range $svc_key, $svc_value := .Values.dao.services }}
+          {{- if $svc_value.enable }}
+          -
+            name: {{ $svc_key }}
+          {{- end }}
+        {{- end }}

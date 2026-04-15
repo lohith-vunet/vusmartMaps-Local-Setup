@@ -1,0 +1,138 @@
+# vulauncher will update this section while deployment
+vunet:
+  imageServer: &imageServer ghcr.io
+    #imageServer: &imageServer vunet-registry:5000
+  imageName: &imageName vunetsystems/cairo
+  imageTag: &imageTag 2.16.901
+    #imageTag: &imageTag 2.16.901
+  imagePullSecrets:
+    - name: ghcr-login-secret
+  # cpu and memory min and max values
+  resources: &resources
+    limits:
+      cpu: "0.5"
+      memory: 1Gi
+    requests:
+      cpu: "0.3"
+      memory: 500Mi
+  # priority node labels
+  nodeAffinity: &nodeAffinity {}
+  # tolerations
+  tolerations: &tolerations []
+  # number of pods to run
+  replicas: &replicas 1
+  # pvc details
+  hot:
+    size: &hotSize ""
+    enabled: &hotEnabled false
+    encrypted: &hotEncrypted false
+    storageclass: &hotStorageClass ""
+  warm:
+    size: &warmSize ""
+    enabled: &warmEnabled false
+    encrypted: &warmEncrypted false
+    storageclass: &warmStorageClass ""
+  cold:
+    size: &coldSize ""
+    enabled: &coldEnabled false
+    encrypted: &coldEncrypted false
+    storageclass: &coldStorageClass ""
+  default:
+    size: &defaultSize ""
+    enabled: &defaultEnabled false
+    encrypted: &defaultEncrypted false
+    storageclass: &defaultStorageClass ""
+  default-replica:
+    size: &defaultReplicaSize ""
+    enabled: &defaultReplicaEnabled false
+    encrypted: &defaultReplicaEncrypted false
+    storageclass: &defaultReplicaStorageClass ""
+  host:
+    size: &hostSize ""
+    enabled: &hostEnabled false
+    encrypted: &hostEncrypted false
+    storageclass: &hostStorageClass ""
+  # ghcr credentials
+  pullSecretName: &pullSecretName ghcr-login-secret
+  # loadbalancer IP information
+  loadbalancer: &loadbalancer []
+fullnameOverride: 'alert'
+securityContext:
+  privileged: false
+  allowPrivilegeEscalation: false # Prevent privilege escalation
+  capabilities:
+    drop: ["ALL"]
+  readOnlyRootFilesystem: true
+  runAsNonRoot: true
+  seccompProfile:
+    type: RuntimeDefault
+podSecurityContext:
+  fsGroup: 1000
+  runAsUser: 1000
+  runAsGroup: 1000
+  runAsNonRoot: true
+  seccompProfile:
+    type: RuntimeDefault
+serviceAccount:
+  # Specifies whether a service account should be created
+  create: true
+  # Annotations to add to the service account
+  annotations: {}
+  # The name of the service account to use.
+  # If not set and create is true, a name is generated using the fullname template
+  name: "alert"
+  roleName: "alert-role"
+  roleBindName: "alert-role-bind"
+  automountServiceAccountToken: true
+posthook:
+  repository: *imageServer
+  imageName: vunetsystems/kubectl
+  imageTag: v2.15.0
+global:
+  extraEnvVars: []
+env:
+  - name: TRAEFIK_IPS
+    value: 216.48.185.161
+  - name: VSMAPS_DOMAIN
+    value: 216.48.185.161
+  - name: HOT_DISK_NAME
+    value: default_encrypted_disk
+  - name: WARM_DISK_NAME
+    value: warm_encrypted_disk
+  - name: COLD_STORE_ENABLED
+    value: "True"
+alert:
+  replicas: *replicas
+  securityContext:
+    fsGroup: 1000
+    runAsUser: 1000
+    runAsGroup: 1000
+  imagePullSecrets:
+    - name: *pullSecretName
+  repository: *imageServer
+  name: *imageName
+  tag: *imageTag
+  tolerations: *tolerations
+  pullPolicy: IfNotPresent
+  resources: *resources
+  podAntiAffinityPreset: ""
+  affinity:
+    nodeAffinity: *nodeAffinity
+  volumeClaims:
+    vsmapsLogs:
+      requests:
+        storage: 2Gi
+  args:
+    - /bin/bash
+    - -c
+    - |
+      alert_node_name=$(echo $HOSTNAME  | awk -F'-' '{print $1"-" $2+1}') && tools/vunode.bash /home/vunet/workspace/cairo /home/vunet/workspace/cairo/configs/alert-vunode.yml $alert_node_name start
+kubernetesClusterDomain: cluster.local
+pvMapping: {}
+kubectlResources:
+  requests:
+    cpu: "50m"
+    memory: "100Mi"
+  limits:
+    cpu: "100m"
+    memory: "200Mi"

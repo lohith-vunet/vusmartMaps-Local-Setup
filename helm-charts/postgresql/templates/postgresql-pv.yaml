@@ -1,0 +1,28 @@
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: data-postgresql-pv
+  annotations:
+    helm.sh/resource-policy: keep
+spec:
+  capacity:
+    storage: 10Gi
+  volumeMode: Filesystem
+  accessModes:
+    - ReadWriteOnce
+  persistentVolumeReclaimPolicy: Retain
+  storageClassName: local-storage
+  local:
+    path: /data1/postgresql  # Local path on the node
+  nodeAffinity:
+    required:
+      nodeSelectorTerms:
+        - matchExpressions:
+            - key: kubernetes.io/hostname
+              operator: In
+              values:
+                - kind-control-plane  # Node name where the path exists
+  claimRef:
+    name: data-postgresql-0  # PVC name that will claim this PV
+    namespace: vsmaps
+

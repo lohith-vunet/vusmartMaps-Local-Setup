@@ -1,0 +1,11 @@
+
+    - 
+        #for data collector vuNode
+        name: alert-idx
+        node_instance_id: idx
+        services:
+            - 
+                # Alert generation
+                name: alerts
+                configuration:
+                    filter: "*"

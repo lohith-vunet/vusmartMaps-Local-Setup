@@ -1,0 +1,489 @@
+apiVersion: {{ include "common.capabilities.deployment.apiVersion" . }}
+kind: Deployment
+metadata:
+  name: nairobi-1
+  namespace: {{ .Release.Namespace | quote }}
+  {{- if .Values.nairobihelmlabels.create }}
+  labels:
+    organization: vunet
+    {{- include "common.labels.standard" . | nindent 4 }}
+    {{- if .Values.commonLabels }}
+    {{- include "common.tplvalues.render" ( dict "value" .Values.commonLabels "context" $ ) | nindent 4 }}
+    {{- end }}
+   {{- end }}
+  {{- if .Values.commonAnnotations }}
+  annotations: {{- include "common.tplvalues.render" ( dict "value" .Values.commonAnnotations "context" $ ) | nindent 4 }}
+  {{- end }}
+spec:
+  replicas: {{ .Values.grafana.replicaCount }}
+  selector:
+    matchLabels:
+      organization: vunet
+      app: nairobi-1
+      {{- if .Values.nairobihelmmatchLebales.create }}
+      {{- include "common.labels.matchLabels" . | nindent 6 }}
+      {{- end }}
+  {{- if .Values.grafana.updateStrategy }}
+  strategy: {{ include "common.tplvalues.render" (dict "value" .Values.grafana.updateStrategy "context" $) | nindent 4 }}
+    rollingUpdate:
+      maxSurge: {{ .Values.nairobi.updateStrategyMaxSurge }}
+      maxUnavailable: {{ .Values.nairobi.updateStrategyMaxUnavailable }}
+  {{- end }}
+  template:
+    metadata:
+      labels:
+        organization: vunet
+        app: nairobi-1
+        traefik.enable: 'true'
+        traefik.http.routers.nairobi-default.entrypoints: 'websecure'
+        traefik.http.services.nairobi-default.loadbalancer.server.port: '3000'
+        {{- include "common.labels.standard" . | nindent 8 }}
+        app.kubernetes.io/component: grafana
+        {{- if .Values.grafana.podLabels }}
+        {{- include "common.tplvalues.render" (dict "value" .Values.grafana.podLabels "context" $) | nindent 8 }}
+        {{- end }}
+      annotations:
+        {{- include "cairo.annotations" . | nindent 8 }}
+      {{- if .Values.nairobihelmannotations.create }}
+      annotations:
+        {{- if (include "grafana.createAdminSecret" .) }}
+        checksum/secret: {{ include (print $.Template.BasePath "/secret.yaml") . | sha256sum }}
+        {{- end }}
+        {{- if (include "grafana.createSMTPSecret" .) }}
+        checksum/smtp-secret: {{ include (print $.Template.BasePath "/smtp-secret.yaml") . | sha256sum }}
+        {{- end }}
+        checksum/config: {{ include (print $.Template.BasePath "/configmap.yaml") . | sha256sum }}
+        checksum/dashboard-provider: {{ include (print $.Template.BasePath "/dashboard-provider.yaml") . | sha256sum }}
+        {{- if and .Values.ldap.enabled (or (not (empty .Values.ldap.configuration)) (not (empty .Values.ldap.uri))) (empty .Values.ldap.configMapName) (empty .Values.ldap.secretName) }}
+        checksum/ldap: {{ include (print $.Template.BasePath "/ldap-secret.yaml") . | sha256sum }}
+        {{- end }}
+        {{- if .Values.grafana.podAnnotations }}
+        {{- include "common.tplvalues.render" (dict "value" .Values.grafana.podAnnotations "context" $) | nindent 8 }}
+        {{- end }}
+      {{- end }}
+    spec:
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- if .Values.grafana.hostAliases }}
+      hostAliases: {{- include "common.tplvalues.render" (dict "value" .Values.grafana.hostAliases "context" $) | nindent 8 }}
+      {{- end }}
+      serviceAccountName: {{ include "grafana.serviceAccountName" . }}
+      automountServiceAccountToken: {{ .Values.serviceAccount.automountServiceAccountToken }}
+      {{- if .Values.grafana.schedulerName }}
+      schedulerName: {{ .Values.grafana.schedulerName | quote }}
+      {{- end }}
+      {{- if .Values.grafana.priorityClassName }}
+      priorityClassName: {{ .Values.grafana.priorityClassName | quote }}
+      {{- end }}
+      affinity:
+        podAntiAffinity: {{- include "common.affinities.pods" (dict "type" .Values.grafana.podAntiAffinityPreset "component" "grafana" "context" $) | nindent 10 }}
+        {{- with .Values.grafana.affinity.nodeAffinity }}
+        nodeAffinity:
+          {{- toYaml . | nindent 10 }}
+        {{- end }}
+      {{- if .Values.grafana.nodeSelector }}
+      nodeSelector: {{- include "common.tplvalues.render" (dict "value" .Values.grafana.nodeSelector "context" $) | nindent 8 }}
+      {{- end }}
+      {{- if .Values.grafana.tolerations }}
+      tolerations: {{- include "common.tplvalues.render" (dict "value" .Values.grafana.tolerations "context" $) | nindent 8 }}
+      {{- end }}
+      {{- if .Values.grafana.topologySpreadConstraints }}
+      topologySpreadConstraints: {{- include "common.tplvalues.render" (dict "value" .Values.grafana.topologySpreadConstraints "context" $) | nindent 8 }}
+      {{- end }}
+      {{- if .Values.grafana.podSecurityContext.enabled }}
+      {{- if .Values.securitycontext.create }}
+      securityContext: {{- omit .Values.grafana.podSecurityContext "enabled" | toYaml | nindent 8 }}
+      {{- end }}
+      {{- end }}
+      {{- if .Values.grafana.terminationGracePeriodSeconds }}
+      terminationGracePeriodSeconds: {{ .Values.grafana.terminationGracePeriodSeconds }}
+      {{- end }}
+      {{- if .Values.nairobiinitContainer.create }}
+      initContainers:
+      {{- if .Values.volumePermissions.enabled }}
+        - name: volume-permissions
+          image: {{ include "volumePermissions.image" . }}
+          imagePullPolicy: {{ .Values.volumePermissions.image.pullPolicy | quote }}
+          command:
+            - /bin/bash
+          args:
+            - -ec
+            - |
+              mkdir -p /bitnami/grafana
+              find /bitnami/grafana -mindepth 1 -maxdepth 1 -not -name ".snapshot" -not -name "lost+found" | xargs -r chown -R {{ .Values.grafana.containerSecurityContext.runAsUser }}:{{ .Values.grafana.podSecurityContext.fsGroup }}
+         {{- if .Values.securitycontext.create }}
+          securityContext: {{- include "common.tplvalues.render" (dict "value" .Values.volumePermissions.containerSecurityContext "context" $) | nindent 12 }}
+         {{- end }}
+          {{- if .Values.volumePermissions.resources }}
+          resources: {{- include "common.tplvalues.render" (dict "value" .Values.volumePermissions.resources "context" $) | nindent 12 }}
+          {{- end }}
+          volumeMounts:
+            - name: data
+              mountPath: /bitnami/grafana
+        {{- end }}
+      {{- end }}
+        {{- if .Values.grafana.initContainers }}
+          {{- include "common.tplvalues.render" (dict "value" .Values.grafana.initContainers "context" $) | nindent 8 }}
+        {{- end }}
+      containers:
+        - name: nairobi-1
+          image: {{ include "grafana.image" . }}
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          ports:
+            - containerPort: 3000
+          {{- if .Values.securitycontext.create }}
+          {{- if .Values.grafana.containerSecurityContext.enabled }}
+          securityContext: {{- omit .Values.grafana.containerSecurityContext "enabled" | toYaml | nindent 12 }}
+          {{- end }}
+          {{- end }}
+          {{- if .Values.diagnosticMode.enabled }}
+          command: {{- include "common.tplvalues.render" (dict "value" .Values.diagnosticMode.command "context" $) | nindent 12 }}
+          {{- else if .Values.grafana.command }}
+          command: {{- include "common.tplvalues.render" (dict "value" .Values.grafana.command "context" $) | nindent 12 }}
+          {{- end }}
+          {{- if .Values.diagnosticMode.enabled }}
+          args: {{- include "common.tplvalues.render" (dict "value" .Values.diagnosticMode.args "context" $) | nindent 12 }}
+          {{- else if .Values.grafana.args }}
+          args: {{- include "common.tplvalues.render" (dict "value" .Values.grafana.args "context" $) | nindent 12 }}
+          {{- end }}
+          {{- if .Values.envfromconfigMap.create }}
+          envFrom:
+            - configMapRef:
+                name: {{ include "common.names.fullname" . }}-envvars
+            {{- if .Values.grafana.extraEnvVarsCM }}
+            - configMapRef:
+                name: {{ include "common.tplvalues.render" (dict "value" .Values.grafana.extraEnvVarsCM "context" $) }}
+            {{- end }}
+            {{- if .Values.grafana.extraEnvVarsSecret }}
+            - secretRef:
+                name: {{ include "common.tplvalues.render" (dict "value" .Values.grafana.extraEnvVarsSecret "context" $) }}
+            {{- end }}
+          {{- end }}
+          env:
+            - name: DATASTORE_LABEL
+              value: {{ .Values.nairobi.dataStoreLabel | quote }}
+            - name: POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: nairobi-secret
+                  key: postgres_password
+            - name: GF_EXPLORE_ENABLED
+              value: {{ .Values.nairobi.exploreEnable | quote }}
+            - name: GF_FEATURE_TOGGLES_ENABLE
+              value: "newNavigation,swaggerUi,disableEnvelopeEncryption"
+            - name: GF_AUTH_ANONYMOUS_NAME
+              value: {{ .Values.nairobi.authAnonymousName }}
+            - name: GF_PATHS_PLUGINS
+              value: {{ .Values.nairobi.pathsPlugins }}
+            - name: GF_PLUGINS_ALLOW_LOADING_UNSIGNED_PLUGINS
+              value: {{ .Values.nairobi.pluginsAllowLoading }}
+            - name: GF_SERVER_ROOT_URL
+              value: {{ .Values.address.proto }}{{ .Values.address.public }}
+            - name: GF_SERVER_SERVE_FROM_SUB_PATH
+              value: {{ .Values.nairobi.serverServeFromSubPath | quote }}
+            - name: GF_SECURITY_ALLOW_EMBEDDING
+              value: {{ .Values.nairobi.securityAllowEmbedding | quote}}
+            - name: GF_UNIFIED_ALERTING_ENABLED
+              value: {{ .Values.nairobi.unifiedAlertingEnabled | quote }}
+            - name: GF_USERS_DEFAULT_THEME
+              value: {{ .Values.nairobi.usersDefaultTheme }}
+            - name: GF_ALERTING_ENABLED
+              value: {{ .Values.nairobi.alertingEnabled | quote }}
+            - name: GF_DATABASE_TYPE
+              value: {{ .Values.nairobi.databaseType }}
+            - name: GF_AUTH_OAUTH_ALLOW_INSECURE_EMAIL_LOOKUP
+              value: {{ .Values.nairobi.authOauthAllowInsecureEmailLookup | quote }}
+            - name: GF_AUTH_GENERIC_OAUTH_ENABLED
+              value: {{ .Values.nairobi.authGenericOAuthEnabled | quote }}
+            - name: GF_AUTH_GENERIC_OAUTH_NAME
+              value: {{ .Values.nairobi.authGenericOAuthName }}
+            - name: GF_AUTH_GENERIC_OAUTH_SCOPES
+              value: {{ .Values.nairobi.authGenericOAuthScopes }}
+            - name: GF_AUTH_GENERIC_OAUTH_ALLOW_SIGN_UP
+              value: {{ .Values.nairobi.authGenericOAuthAllowSignUp | quote }}
+            - name: GF_AUTH_GENERIC_OAUTH_TLS_SKIP_VERIFY_INSECURE
+              value: {{ .Values.nairobi.authGenericOAuthSkipVerifyInsecure | quote }}
+            - name: GF_AUTH_GENERIC_OAUTH_CLIENT_ID
+              value: {{ .Values.nairobi.authGenericOAuthClientID }}
+            - name: GF_AUTH_GENERIC_OAUTH_AUTH_URL
+              value: {{ .Values.nairobi.authGenericOAuthAuthURL }}
+            - name: GF_AUTH_GENERIC_OAUTH_API_URL
+              value: {{ .Values.nairobi.authGenericOAuthAPIURL }}
+            - name: GF_AUTH_SIGNOUT_REDIRECT_URL
+              value: {{ .Values.nairobi.authSignOutRedirectURL }}
+            - name: GF_AUTH_GENERIC_OAUTH_ROLE_ATTRIBUTE_PATH
+              value: {{ .Values.nairobi.authGenericOAuthRoleAttributePath }}
+            - name: GF_AUTH_GENERIC_OAUTH_LOGIN_ATTRIBUTE_PATH
+              value: {{ .Values.nairobi.authGenericOAuthLoginAttributePath }}
+            - name: GF_AUTH_GENERIC_OAUTH_NAME_ATTRIBUTE_PATH
+              value: {{ .Values.nairobi.authGenericOAuthNameAttributePath }}
+            - name: GF_LOG_LEVEL
+              value: {{ .Values.nairobi.logLevel }}
+            - name: GF_AUTH_DISABLE_LOGIN_FORM
+              value: {{ .Values.nairobi.authDisableLoginForm | quote }}
+            - name: GF_AUTH_OAUTH_AUTO_LOGIN
+              value: {{ .Values.nairobi.authOAuthAutoLogin | quote }}
+            - name: GF_RENDERING_SERVER_URL
+              value: {{ .Values.nairobi.renderingServerURL | quote }}
+            - name: GF_RENDERING_CALLBACK_URL
+              value: {{ .Values.nairobi.renderingCallbackURL }}
+            - name: TZ
+              value: {{ .Values.nairobi.timezone }}
+            - name: GF_AUTH_LOGIN_MAXIMUM_LIFETIME_DURATION
+              value: {{ .Values.nairobi.authLoginMaximunInactiveLifetimeDuration | quote }}
+            - name: GF_VSMAPS_INACTIVITY
+              value: {{ .Values.nairobi.authInactivity | quote }}
+            - name: GF_TRACING_OPENTELEMETRY_OTLP_ADDRESS
+              value: {{ .Values.nairobi.tracingOTLPAddress | quote }}
+            - name: GF_AUTH_GENERIC_OAUTH_CLIENT_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: nairobi-secret-spc
+                  key: GF_AUTH_GENERIC_OAUTH_CLIENT_SECRET
+            - name: GF_AUTH_TOKEN_ROTATION_INTERVAL_MINUTES
+              valueFrom:
+                secretKeyRef:
+                  name: nairobi-secret-spc
+                  key: GF_AUTH_TOKEN_ROTATION_INTERVAL_MINUTES
+            - name: GF_AUTH_GENERIC_OAUTH_TOKEN_URL
+              valueFrom:
+                secretKeyRef:
+                  name: nairobi-secret-spc
+                  key: GF_AUTH_GENERIC_OAUTH_TOKEN_URL
+            - name: GF_DATABASE_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: nairobi-secret-spc
+                  key: GF_DATABASE_PASSWORD
+            - name: GF_DATABASE_HOST
+              valueFrom:
+                secretKeyRef:
+                  name: nairobi-secret-spc
+                  key: GF_DATABASE_HOST
+            - name: GF_DATABASE_NAME
+              valueFrom:
+                secretKeyRef:
+                  name: nairobi-secret-spc
+                  key: GF_DATABASE_NAME
+            - name: GF_DATABASE_USER
+              valueFrom:
+                secretKeyRef:
+                  name: nairobi-secret-spc
+                  key: GF_DATABASE_USER
+            {{- if .Values.smtp.enabled }}
+            - name: GF_SMTP_ENABLED
+              value: "true"
+            {{- if .Values.smtp.host }}
+            - name: GF_SMTP_HOST
+              value: {{ .Values.smtp.host }}
+            {{- end }}
+            {{- if .Values.smtp.fromAddress }}
+            - name: GF_SMTP_FROM_ADDRESS
+              value: {{ .Values.smtp.fromAddress }}
+            {{- end }}
+            {{- if .Values.smtp.fromName }}
+            - name: GF_SMTP_FROM_NAME
+              value: {{ .Values.smtp.fromName }}
+            {{- end }}
+            {{- if .Values.smtp.skipVerify }}
+            - name: GF_SMTP_SKIP_VERIFY
+              value: "{{ .Values.smtp.skipVerify }}"
+            {{- end }}
+            - name: GF_SMTP_USER
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "grafana.smtpSecretName" . }}
+                  key: {{ include "grafana.smtpSecretUserKey" . }}
+            - name: GF_SMTP_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "grafana.smtpSecretName" . }}
+                  key: {{ include "grafana.smtpSecretPasswordKey" . }}
+            {{- end }}
+            {{- if .Values.grafana.extraEnvVars }}
+            {{- include "common.tplvalues.render" (dict "value" .Values.grafana.extraEnvVars "context" $) | nindent 12 }}
+            {{- end }}
+          volumeMounts:
+                #- name: localtime-ro
+                #mountPath: {{ .Values.nairobi.localtimeMountPath }}
+            {{- if .Values.config.useGrafanaIniFile }}
+            - name: grafana-ini
+              mountPath: /opt/bitnami/grafana/conf/grafana.ini
+              subPath: grafana.ini
+            {{- end }}
+            {{- if .Values.dashboardsProvider.enabled }}
+            - name: dashboards-provider
+              mountPath: /opt/bitnami/grafana/conf/provisioning/dashboards
+            {{- end }}
+            {{- range .Values.dashboardsConfigMaps }}
+            - name: {{ include "common.tplvalues.render" ( dict "value" .configMapName "context" $ ) }}
+            {{- if .folderName }}
+              mountPath: /opt/bitnami/grafana/dashboards/{{ .folderName }}/{{ .fileName }}
+            {{- else }}
+              mountPath: /opt/bitnami/grafana/dashboards/{{ .fileName }}
+            {{- end }}
+              subPath: {{ .fileName }}
+            {{- end }}
+            {{- if or (.Values.datasources.secretName) (.Values.datasources.secretDefinition) }}
+            - name: datasources
+              mountPath: /opt/bitnami/grafana/conf/provisioning/datasources
+            {{- end }}
+            {{- if .Values.notifiers.configMapName }}
+            - name: notifiers
+              mountPath: /opt/bitnami/grafana/conf/provisioning/notifiers
+            {{- end }}
+            {{- if .Values.ldap.enabled }}
+            - name: ldap
+              mountPath: /opt/bitnami/grafana/conf/ldap.toml
+              subPath: ldap.toml
+            {{- end }}
+            {{- if and .Values.ldap.tls.enabled .Values.ldap.tls.certificatesSecret }}
+            - name: ldap-tls
+              mountPath: {{ .Values.ldap.tls.certificatesMountPath }}
+            {{- end }}
+            {{- range .Values.grafana.extraConfigmaps }}
+            - name: {{ .name }}
+              mountPath: {{ .mountPath }}
+              subPath: {{ .subPath | default "" }}
+            {{- end }}
+            {{- if .Values.grafana.containerSecurityContext.readOnlyRootFilesystem }}
+            - mountPath: /tmp
+              name: tmp-volume
+            - mountPath: /var/lib/grafana/
+              name: png-volume
+            {{- end }}
+            {{- if .Values.grafana.extraVolumeMounts }}
+            {{- include "common.tplvalues.render" (dict "value" .Values.grafana.extraVolumeMounts "context" $) | nindent 12 }}
+            {{- end }}
+          {{- if .Values.dashboardports.create }}
+          ports:
+            - name: dashboard
+              containerPort: {{ .Values.grafana.containerPorts.grafana }}
+              protocol: TCP
+          {{- end }}
+                {{- if .Values.livenessreadinessProbe.create }}
+          {{- if .Values.grafana.customLivenessProbe }}
+          livenessProbe: {{- include "common.tplvalues.render" (dict "value" .Values.grafana.customLivenessProbe "context" $) | nindent 12 }}
+          {{- else if .Values.grafana.livenessProbe.enabled }}
+          livenessProbe:
+            httpGet:
+              path: {{ .Values.grafana.livenessProbe.path }}
+              port: dashboard
+              scheme: {{ .Values.grafana.livenessProbe.scheme }}
+            initialDelaySeconds: {{ .Values.grafana.livenessProbe.initialDelaySeconds }}
+            periodSeconds: {{ .Values.grafana.livenessProbe.periodSeconds }}
+            timeoutSeconds: {{ .Values.grafana.livenessProbe.timeoutSeconds }}
+            successThreshold: {{ .Values.grafana.livenessProbe.successThreshold }}
+            failureThreshold: {{ .Values.grafana.livenessProbe.failureThreshold }}
+          {{- end }}
+          {{- if .Values.grafana.customReadinessProbe }}
+          readinessProbe: {{- include "common.tplvalues.render" (dict "value" .Values.grafana.customReadinessProbe "context" $) | nindent 12 }}
+          {{- else if .Values.grafana.readinessProbe.enabled }}
+          readinessProbe:
+            httpGet:
+              path: {{ .Values.grafana.readinessProbe.path }}
+              port: dashboard
+              scheme: {{ .Values.grafana.readinessProbe.scheme }}
+            initialDelaySeconds: {{ .Values.grafana.readinessProbe.initialDelaySeconds }}
+            periodSeconds: {{ .Values.grafana.readinessProbe.periodSeconds }}
+            timeoutSeconds: {{ .Values.grafana.readinessProbe.timeoutSeconds }}
+            successThreshold: {{ .Values.grafana.readinessProbe.successThreshold }}
+            failureThreshold: {{ .Values.grafana.readinessProbe.failureThreshold }}
+          {{- end }}
+          {{- end }}
+          {{- if .Values.grafana.customStartupProbe }}
+          startupProbe: {{- include "common.tplvalues.render" (dict "value" .Values.grafana.customStartupProbe "context" $) | nindent 12 }}
+          {{- else if .Values.grafana.startupProbe.enabled }}
+          startupProbe:
+            httpGet:
+              path: {{ .Values.grafana.startupProbe.path }}
+              port: dashboard
+              scheme: {{ .Values.grafana.startupProbe.scheme }}
+            initialDelaySeconds: {{ .Values.grafana.startupProbe.initialDelaySeconds }}
+            periodSeconds: {{ .Values.grafana.startupProbe.periodSeconds }}
+            timeoutSeconds: {{ .Values.grafana.startupProbe.timeoutSeconds }}
+            successThreshold: {{ .Values.grafana.startupProbe.successThreshold }}
+            failureThreshold: {{ .Values.grafana.startupProbe.failureThreshold }}
+          {{- end }}
+          {{- if .Values.grafana.lifecycleHooks }}
+          lifecycle: {{- include "common.tplvalues.render" (dict "value" .Values.grafana.lifecycleHooks "context" $) | nindent 12 }}
+          {{- end }}
+          {{- if .Values.grafana.resources }}
+          resources: {{- include "common.tplvalues.render" (dict "value" .Values.grafana.resources "context" $) | nindent 12 }}
+          {{- end }}
+        {{- if .Values.grafana.sidecars }}
+        {{- include "common.tplvalues.render" (dict "value" .Values.grafana.sidecars "context" $) | nindent 8 }}
+        {{- end }}
+      volumes:
+        {{- if .Values.ldap.enabled }}
+        - name: ldap
+          {{- if not (empty .Values.ldap.configMapName) }}
+          configMap:
+            name: {{ .Values.ldap.configMapName }}
+          {{- else if not (empty .Values.ldap.secretName) }}
+          secret:
+            secretName: {{ .Values.ldap.secretName }}
+          {{- else }}
+          secret:
+            secretName: {{ printf "%s-ldap-conf" (include "common.names.fullname" .) }}
+          {{- end }}
+        {{- end }}
+        {{- if .Values.dashboardsProvider.enabled }}
+        - name: dashboards-provider
+          configMap:
+            {{- if .Values.dashboardsProvider.configMapName }}
+            name: {{ include "common.tplvalues.render" ( dict "value" .Values.dashboardsProvider.configMapName "context" $) }}
+            {{- else }}
+            name: {{ include "common.names.fullname" . }}-provider
+            {{- end }}
+        {{- end }}
+        {{- range .Values.dashboardsConfigMaps }}
+        - name: {{ include "common.tplvalues.render" ( dict "value" .configMapName "context" $ ) }}
+          configMap:
+            name: {{ include "common.tplvalues.render" ( dict "value" .configMapName "context" $ ) }}
+        {{- end }}
+        {{- if .Values.datasources.secretName }}
+        - name: datasources
+          secret:
+            secretName: {{ .Values.datasources.secretName }}
+        {{- else if .Values.datasources.secretDefinition }}
+        - name: datasources
+          secret:
+            secretName: {{ include "common.names.fullname" . }}-datasources
+        {{- end }}
+        {{- if .Values.notifiers.configMapName }}
+        - name: notifiers
+          configMap:
+            name: {{ .Values.notifiers.configMapName }}
+        {{- end }}
+        {{- if .Values.config.useGrafanaIniFile }}
+        - name: grafana-ini
+          {{- if .Values.config.grafanaIniConfigMap }}
+          configMap:
+            name: {{ .Values.config.grafanaIniConfigMap }}
+          {{- else if .Values.config.grafanaIniSecret }}
+          secret:
+            secretName: {{ .Values.config.grafanaIniSecret }}
+          {{- end }}
+        {{- end }}
+        {{- if and .Values.ldap.tls.enabled .Values.ldap.tls.certificatesSecret }}
+        - name: ldap-tls
+          secret:
+            secretName: {{ .Values.ldap.tls.certificatesSecret }}
+        {{- end }}
+        {{- range .Values.grafana.extraConfigmaps }}
+        - name: {{ .name }}
+          configMap:
+            name: {{ .name }}
+        {{- end }}
+        {{- if .Values.grafana.containerSecurityContext.readOnlyRootFilesystem }}
+        - name: tmp-volume
+          emptyDir: {}
+        - name: png-volume
+          emptyDir: {}      
+        {{- end }}
+        {{- if .Values.grafana.extraVolumes }}
+        {{- include "common.tplvalues.render" (dict "value" .Values.grafana.extraVolumes  "context" $) | nindent 8 }}
+        {{- end }}

@@ -1,0 +1,152 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: dao
+  labels:
+    app: dao
+    managedBy: vunet
+  {{- include "cairo.labels" . | nindent 4 }}
+spec:
+  replicas: {{ .Values.dao.replicas }}
+  selector:
+    matchLabels:
+      app: dao
+      managedBy: vunet
+      {{- include "cairo.labels" . | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        app: dao
+        managedBy: vunet
+        {{- include "cairo.labels" . | nindent 8 }}
+      annotations:
+        {{- include "cairo.annotations" . | nindent 8 }}
+    spec:
+      # To access Kubernetes resources (such as logs) from the DAO pod,
+      # it needs to be authenticated to the 'orchestration' service account.
+      # Otherwise, access will be denied with a 400 Bad Request.
+      serviceAccountName:  {{ .Values.serviceAccount.name }}
+      automountServiceAccountToken: {{ .Values.serviceAccount.automountServiceAccountToken }}  
+      {{- with .Values.dao.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+
+      {{- with .Values.dao.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- if .Values.podSecurityContext }}
+      securityContext: {{- toYaml .Values.podSecurityContext | nindent 8 }}
+      {{- end }}
+      affinity:
+        podAntiAffinity: {{- include "common.affinities.pods" (dict "type" .Values.dao.podAntiAffinityPreset "component" "grafana" "context" $) | nindent 10 }}
+        {{- with .Values.dao.affinity.nodeAffinity }}
+        nodeAffinity:
+            {{- toYaml . | nindent 10 }}
+        {{- end }}
+      containers:
+      - name: "dao"
+        args: {{- toYaml .Values.dao.args | nindent 8 }}
+        # https://kubernetes.io/docs/tasks/configure-pod-container/configure-liveness-readiness-startup-probes/#configure-probes
+
+        # Create a comma separated string with all enabled celery queue
+        {{- $celeryList := "" }}
+        {{- range $key, $value := .Values.dao.celery }}
+          # If this celery entry is enabled, append its queue name
+          # to celeryList string
+          {{- if $value.enable }}
+            {{- if eq $celeryList "" }}
+              {{- $celeryList = printf "%s_queue" $key }}
+            {{- else }}
+              {{- $celeryList = printf "%s,%s_queue" $celeryList $key }}
+            {{- end }}
+          {{- end }}
+        {{- end }}
+        {{- $healthScript := "/home/vunet/workspace/cairo/tools/health/vunode_health.sh" }}
+        {{- if $celeryList }}
+          {{- $healthScript = printf "%s --check-celery %s" $healthScript $celeryList }}
+        {{- end }}
+        livenessProbe:
+          exec:
+            command:
+              - /bin/sh
+              - -c
+              - {{ $healthScript }} >&2
+          initialDelaySeconds: 200
+          failureThreshold: 2
+          periodSeconds: 10
+        {{- if .Values.securityContext }}
+        securityContext: {{- toYaml .Values.securityContext | nindent 10 }}
+        {{- end }}
+        env:
+        {{- if .Values.env }}
+        {{- include "common.tplvalues.render" (dict "value" .Values.env "context" $) | nindent 8 }}
+        {{- end }}
+        {{- if .Values.global.extraEnvVars }}
+        {{- include "common.tplvalues.render" (dict "value" .Values.global.extraEnvVars "context" $) | nindent 8 }}
+        {{- end }}
+        envFrom:
+        - configMapRef:
+            name: vuinterface-config
+        - secretRef:
+              name: vuinterface-secret
+        {{- range $index, $var := .Values.dao.envOverrides }}
+            - name: {{ $var.name }}
+              value: {{ $var.value | quote }}
+        {{- end }}
+        image: {{ .Values.dao.repository }}/{{ .Values.dao.name}}:{{ .Values.dao.tag
+          | default .Chart.AppVersion }}
+        imagePullPolicy: {{ .Values.dao.pullPolicy }}
+        workingDir: /home/vunet/workspace/cairo
+        {{- if .Values.dao.resources }}
+        resources: {{- toYaml .Values.dao.resources | nindent 12 }}
+        {{- end }}
+        ports:
+        - containerPort: 50051
+        volumeMounts:
+                #- name: ca-vunodes
+                #  mountPath: /etc/ssl/certs/vunet-ca-cert.pem
+                #  subPath: vunet-ca-cert.pem
+        - name: dao-vunode-config
+          mountPath: /home/vunet/workspace/cairo/configs/vunode_config.yml
+          subPath: vunode_config.yml
+        - name: aws-env
+          mountPath: /home/vunet/.aws/credentials
+          subPath: credentials
+      {{- if .Values.securityContext.readOnlyRootFilesystem }}
+        - name: autoclasses-volume
+          mountPath: /home/vunet/workspace/cairo/pluto/autoclasses/
+        - name: telenode-volume
+          mountPath: /home/vunet/workspace/cairo/pluto/telenode/
+        - name: tmp-volume
+          mountPath: /tmp
+        - name: vusmartmaps-logs
+          mountPath: /var/log/vusmartmaps/
+        - name: logging-config
+          mountPath: /home/vunet/workspace/cairo/utilities/logging_conf
+      {{- end }}
+      hostname: vunode
+      volumes:
+              #- name: ca-vunodes
+              #  configMap:
+              #  name: ca-vunodes
+      - configMap:
+          name: aws-secrets
+        name: aws-env
+      - configMap:
+          name: dao-vunode-config
+        name: dao-vunode-config
+      {{- if .Values.securityContext.readOnlyRootFilesystem }}
+      - name: autoclasses-volume
+        emptyDir: {}
+      - name: telenode-volume
+        emptyDir: {}
+      - name: tmp-volume
+        emptyDir: {}
+      - name: vusmartmaps-logs
+        emptyDir: {}
+      - name: logging-config
+        configMap:
+          name: vusoft-logging-conf
+      {{- end }}

@@ -1,0 +1,7 @@
+# vublock-store/Chart.yaml
+apiVersion: v2
+name: vublock-store
+description: A Helm chart for Kubernetes to deploy vublock-store
+version: 0.1.0
+appVersion: "latest"
+

@@ -1,0 +1,64 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: "vublock-install"
+  labels:
+    app.kubernetes.io/managed-by: {{ .Release.Service | quote }}
+    app.kubernetes.io/instance: {{ .Release.Name | quote }}
+    app.kubernetes.io/version: {{ .Chart.AppVersion }}
+    helm.sh/chart: "{{ .Chart.Name }}-{{ .Chart.Version }}"
+  annotations:
+    # This is what defines this resource as a hook. Without this line, the
+    # job is considered part of the release.
+    "helm.sh/hook": post-install
+    "helm.sh/hook-weight": "0"
+    "helm.sh/hook-delete-policy": hook-succeeded
+spec:
+  template:
+    metadata:
+      name: "vublock-install"
+      labels:
+        app.kubernetes.io/managed-by: {{ .Release.Service | quote }}
+        app.kubernetes.io/instance: {{ .Release.Name | quote }}
+        helm.sh/chart: "{{ .Chart.Name }}-{{ .Chart.Version }}"
+    spec:
+      serviceAccountName: {{ .Values.serviceAccount.name  }}
+      automountServiceAccountToken: {{ .Values.serviceAccount.automountServiceAccountToken }}  #Disable SA token auto-mount
+      restartPolicy: Never
+      {{- if .Values.vublockPodSecurityContext  }}
+      securityContext: {{- toYaml .Values.podSecurityContext | nindent 8 }}
+      {{- end }}
+      affinity:
+        podAntiAffinity:
+        {{- with .Values.affinity.nodeAffinity }}
+        nodeAffinity:
+          {{- toYaml . | nindent 10 }}
+        {{- end }}
+      {{- with .Values.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      restartPolicy: Never
+      containers:
+      - name: post-vublock-install-job
+        {{- if .Values.securityContext }}
+        securityContext: {{- toYaml .Values.securityContext | nindent 10 }}
+        {{- end }}
+        resources: {{- toYaml .Values.postJobResources | nindent 12 }}
+        env:
+        {{- if .Values.vublockstore.extraEnvVars }}
+        {{- include "common.tplvalues.render" (dict "value" .Values.vublockstore.extraEnvVars "context" $) | nindent 8 }}
+        {{- end }}
+        envFrom:
+        - configMapRef:
+            name: postjob-config
+        - secretRef:
+            name: postjob-secret
+        image: {{ .Values.vublockstore.image.repository }}/{{ .Values.vublockstore.image.name }}:{{ .Values.vublockstore.image.tag
+          | default .Chart.AppVersion }}
+        imagePullPolicy: {{ .Values.vublockstore.image.pullPolicy }}
+        command: ["/bin/bash", "-c", "cd /app; for vublocks in $(echo ${VUBLOCK_LIST}); do version_dir=/app/vublocks/$vublocks; if [ -d \"$version_dir\" ]; then version=$(ls \"$version_dir\" | sort -V | tail -n 1); if [ -n \"$version\" ]; then manage_vublock install --ignore-missing-files --name \"$vublocks\" --version \"$version\"; else echo \"No versions found for $vublocks\"; fi; else echo \"Directory $version_dir does not exist\"; fi; done"]

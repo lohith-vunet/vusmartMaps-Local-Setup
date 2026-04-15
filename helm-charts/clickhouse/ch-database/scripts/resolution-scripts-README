@@ -1,0 +1,48 @@
+# ClickHouse Resolution Scripts
+
+## Introduction
+This repository contains scripts to resolve common ClickHouse issues such as stuck mutations and read-only tables that may occur in the NG-2.15 product version.
+
+## Issues Addressed
+
+### 1. Stuck Mutations
+Unfinished mutation operations (UPDATE, DELETE, ADD COLUMN, MODIFY COLUMN, TTL modifications) that:
+- Remain in unfinished state (is_done=0)
+- Block mutation or replication queues
+- May cause queries to fail or hang
+
+### 2. Read-Only Tables
+Tables where write operations are restricted, with errors like:
+`DB::Exception: Table is in read-only mode.`
+
+## Prerequisites
+- Access to ClickHouse server
+- Appropriate permissions to execute scripts and modify tables
+- Scripts should be run on each affected replica
+
+## Usage Instructions
+
+### For Stuck Mutations
+
+1. **Identify stuck mutations** using the Healthscript which checks:
+   - Stuck mutations in all replicas
+   - Blocked replication queues
+
+2. **Run the resolution script**:
+   ```cd /var/lib/clickhouse/user_scripts &&
+   ./resolution_scripts/stuck_mutation.sh <database_name> <table_name> [--execute]
+
+### For Read-Only Tables
+
+1. **Identify read-only tables** using the Healthscript.
+
+2. **Run the resolution script**:
+   ```cd /var/lib/clickhouse/user_scripts &&
+   ./resolution_scripts/read-only.sh [--execute]
+
+## Important Notes:
+
+1. Scripts are to be executed from the ```/var/lib/clickhouse/user_scripts``` directory and not from the ```/var/lib/clickhouse/user_scripts/resolution_scripts``` directory.
+2. Scripts run in **dry-run mode by default (no changes made)**
+2. Add --execute flag to perform actual operations
+

@@ -1,0 +1,15 @@
+apiVersion: v1
+data:
+  {{- $files := .Files }}
+  {{- range tuple "datadump.sql" }}
+  {{ . }}: |-
+        {{ $files.Get . | nindent 8 }}
+  {{- end }}
+kind: ConfigMap
+metadata:
+  creationTimestamp: null
+  namespace: {{ .Release.Namespace | quote }}
+  name: sql-dump
+  {{- if .Values.commonAnnotations }}
+  annotations: {{- include "common.tplvalues.render" ( dict "value" .Values.commonAnnotations "context" $ ) | nindent 4 }}
+  {{- end }}

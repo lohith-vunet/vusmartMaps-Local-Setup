@@ -1,0 +1,394 @@
+# ------------------------- NOTICE ------------------------------- #
+#                                                                  #
+#                   CONFIDENTIAL INFORMATION                       #
+#                   ------------------------                       #
+#     This Document contains Confidential Information or           #
+#     Trade Secrets, or both, which are the property of VuNet      #
+#     Systems Ltd.  This document may not be copied, reproduced,   #
+#     reduced to any electronic medium or machine readable form    #
+#     or otherwise duplicated and the information herein may not   #
+#     be used, disseminated or otherwise disclosed, except with    #
+#     the prior written consent of VuNet Systems Ltd.              #
+#                                                                  #
+# ------------------------- NOTICE ------------------------------- #
+#
+# Copyright 2017 VuNet Systems Ltd.
+# All rights reserved.
+# Use of copyright notice does not imply publication.
+
+# Auxiliary alert rules configuration file.
+
+# Number of async rule executions that will be started in one shot
+"max-async-tasks": 64
+
+# Enable dynamic throttling interval adjustment. By default, dynamic
+# throttling interval is disabled
+# "dynamic-throttle-interval": true
+
+# Enable dynamic severity adjustment based on alert history. By default,
+# dynamic severity adjustment is disabled
+# "dynamic-severity-adjustment": true
+
+# Duration to be considered for state changes. This is in minutes.
+"state-change-monitor-duration": 15
+
+# Enable attaching json string alert document in email alerts. By default,
+# this is turned off.
+# "json_doc_in_email": true
+
+# The alert channels enabled for this installation
+"alert-channels":
+  - "alertByServiceNow"
+#   - "alertByStoredProcedure"
+  - "alertByManageEngine"
+  - "alertByOtrs"
+  - "alertByEmail"
+  - "alertByWhatsapp"
+  - "alertBySms"
+  - "alertByRunBook"
+  - "alertByReport"
+  # - "alertByRemedy"
+  - "alertByJira"
+  - "alertByUI"
+  - "alertByMobile"
+  - "alertByAutoRemediation"
+  - "alertByTeams"
+  - "alertBySlack"
+  - "alertByCliq"
+  - "alertByTicket"
+
+# Add the Alert rule name here, if you want debug level logs to be logged
+# in the vuSmartMaps logs.
+"alert-debug-list": ["test123"]
+
+# Default Size to be used for grouping bucket size
+"default-bucket-size": 10000
+
+# Corelate events or not
+"corelate-alerts": False
+
+# Product engagement metrics to be updated or not
+"product-engagement": False
+
+# All the controls related to alert emails -
+# Control for adding additional field tags in email
+"email-tags": True
+
+# Control for adding historical data in email
+"history-in-emails": True
+
+# Control for adding contextual metrics table in email
+"contextual-metrics": True
+
+# Control for adding information table in email
+"information-table": True
+
+# Default Size to be used for grouping bucket size for information collection
+# rule
+"default-information-rule-bucket-size": 5
+
+# Any metric field for which value has to be modified before placing them
+# in alert document
+"field_modifiers":
+  "system.cpu.user.pct": 100
+  "system.process.cpu.total.pct": 100
+  "system.memory.actual.used.pct": 100
+  "system.cpu.total.norm.pct": 100
+  "system.process.memory.rss.pct": 100
+  "system.process.cpu.total.norm.pct": 100
+
+"globals":
+  "mail_groups": ["test1", "test2", "test3"]
+
+
+# An alert rule is configured with required parameters using the browser based
+# UI. The configured parameters are processed in the backend and is used for
+# rule evaluation.
+
+# In certain cases, any additional configuration parameters added for alert
+# rules may not yet be supported from UI. In such cases, it would
+# be preferable to have a stop gap backend mechanism through which the
+# additional parameters can be configured for rules.
+
+# This auxiliary configuration file is kept in the backend for this purpose.
+# The configuration parameters defined here are appended to the the
+# configuration read from UI for each rule. It should be noted that if a
+# parameter is present in the configuration coming from UI, that configuration
+# always takes precedence. In such a case, the corresponding parameter
+# configuration in auxiliary file is ignored.
+
+# Auxiliary configuration parameters currently supported:
+#
+# Rule Level
+# ----------
+# "rule_result_alias": "-----"
+# "rule_threshold_alias": "----"
+#
+# Sub Rule Level
+# ----------
+#    "subrules":
+#        -
+#          "logical_evaluation" : true
+#          "metricAlias": "UIDAI-NoResponse-Transactions"
+#
+# Aliases
+# Aliases can be specified for various parameters in auxiliary configuration
+# file.
+# For subrule metric field, use 'metricAlias'
+# For rule level threshold, use 'rule_threshold_alias'
+# For rule level value calculated, use 'rule_result_alias'
+#
+# Logical evaluation of a Sub rule
+# logical_evaluation:
+# For True/False evaluation of a subrule with grouping, user has to set
+# 'logical_evaluation' field in auxiliary configuration for the subrule.
+# For example, in the CPU alert in the above case, if the requirement is
+# to generate a single alert if any of the hosts is having CPU usage greater
+# than 80% (instead of generating alerts separately for each and every host),
+# this parameter can be set.
+#
+
+#"alert testing 1(n)":
+#    "alertByServiceNow": true
+
+# The mapping values for adjusting alert risk score based on history
+# of the particular alert. This is an array. The first 3 entries defines the
+# the ratio of total duration for which the alert is currently active against
+# alert rule evaluation duration that will be used to increment score by 3, 2
+# and 1 respecively.
+# The 4th, 5th and 6th entries defines the number of hours for which the
+# alert has been active today that will be used to increment the score
+# by 3, 2 and 1 respectively.
+# The 7th, 8th and 9th entries defines the number of hours for which the
+# alert has been active on an average per day this week that will be used to
+# increment the score by 3, 2 and respectively.
+# "history_to_score_mapping": [12, 8, 4, 16, 12, 8, 18, 14, 10, 30, 20, 10]
+
+#"1":
+#  "1":
+#    "Math rule alert":
+#        # "rule_formula": "(R[1]/R[2])*100"
+#        # "rule_level_threshold": true
+#        "rule_result_alias": "UIDAI-NoResponse-Ratio"
+#        "rule_threshold_alias": "UIDAI-NoResponse-Ratio-Threshold"
+#        "subrules":
+#            -
+#               "metricAlias": "UIDAI-NoResponse-Transactions"
+#    #          'timestamp_field' : "@timestamp"
+#    #          'metricAlias': 'Latency'
+#    #          'logical_evaluation' : true
+#            -
+#               "metricAlias": "Total-Transactions"
+#    #          'timestamp_field' : "@timestamp"
+#    #          'metricAlias': 'High-Latency'
+#    #          'logical_evaluation' : true
+#    "average single rule one level grouping truth evaluation":
+#        "subrules":
+#            -
+#               'logical_evaluation' : true
+#    "multi rule grouping123 level0 logical":
+#        "subrules":
+#            -
+#               'logical_evaluation' : true
+#    "multi rule grouping123 level1 logical":
+#        "subrules":
+#            - "test": true
+#            -
+#               'logical_evaluation' : true
+#    "multi rule grouping123 level2 logical":
+#        "subrules":
+#            - "test": true
+#            - "test": true
+#            -
+#               'logical_evaluation' : true
+#    #"heartbeat alert":
+#    #    "eval_criteria":
+#    #        '{
+#    #             "expression": "if R1 > 1:\n\tRESULT=(R1/R2)*200\nelse:\n\tpass\n",
+#    #             "compare_type": "greater",
+#    #             "compare_value": 1
+#    #         }'
+#    #    "subrules":
+#    #        - "test": true
+#    #        -
+#    #          "compare_type" : "greater"
+#    #          "compare_value" : 50
+#    #
+#    "heartbeat alert":
+#        "subrules":
+#    #      - "target_state": "Down"
+#           - "additionalField_Alias": ["port", "type", "host"]
+#             "rule_type": "value"
+#             "compare_value": 10
+#             "compare_type" : "greater"
+#             "selectedField": "period"
+#    #         "compare_value": "Down"
+#    #         "compare_type" : "equal"
+#    #         "selectedField": "target_state"
+#    "test":
+#        "history_to_score_mapping": [12, 8, 4, 16, 12, 8, 16, 12, 8]
+#        "subrules":
+#            -
+#              "additionalField_Alias": ["port", "period"]
+#            -
+#              "informationCollector": true
+#              "context_level": 0
+#              "bucket_size": 5
+#              "additionalField_Alias": ["target_state"]
+#    # Configuring subrule of type value
+#    #           "rule_type": "value"
+#    #           "compare_value": "00"
+#    #           "selectedField": "type"
+#    "topbeat":
+#        "subrules":
+#            - "test": true
+#              "rule_type": "value"
+#              "compare_type": "greater"
+#              "compare_value": "abc"
+#              "metricAlias": "System CPU Name"
+#              "additionalField_Alias":
+#                - "Session ID"
+#                - "Process Name"
+#            -
+#              "informationCollector": true
+#    #          "rule_type": "max"
+#              "metricAlias": "Process CPU Usage"
+#              "context_level": 1
+#              "bucket_size": 5
+#              "additionalField_Alias":
+#                - "Process Type"
+#    "State Change":
+#        # "clear_history": true
+#        "subrules":
+#            - "context_level": 1
+#            - "rule_type": "latest_value"
+#              "additionalField_Alias":
+#                - "host"
+#                - "Link State"
+#    "link status":
+#        # "clear_history": true
+#        "subrules":
+#            - "metricAlias": "latency"
+#    "Math rule alert":
+#        # "rule_formula": "(R[1]/R[2])*100"
+#        # "rule_level_threshold": true
+#        "rule_result_alias": "UIDAI-NoResponse-Ratio"
+#        "rule_threshold_alias": "UIDAI-NoResponse-Ratio-Threshold"
+#        "subrules":
+#            -
+#               "metricAlias": "UIDAI-NoResponse-Transactions"
+#    #          'timestamp_field' : "@timestamp"
+#    #          'metricAlias': 'Latency'
+#    #          'logical_evaluation' : true
+#            -
+#               "metricAlias": "Total-Transactions"
+#    #          'timestamp_field' : "@timestamp"
+#    #          'metricAlias': 'High-Latency'
+#    #          'logical_evaluation' : true
+#    "average single rule one level grouping truth evaluation":
+#        "subrules":
+#            -
+#               'logical_evaluation' : true
+#    "multi rule grouping123 level0 logical":
+#        "subrules":
+#            -
+#               'logical_evaluation' : true
+#    "multi rule grouping123 level1 logical":
+#        "subrules":
+#            - "test": true
+#            -
+#               'logical_evaluation' : true
+#    "multi rule grouping123 level2 logical":
+#        "subrules":
+#            - "test": true
+#            - "test": true
+#            -
+#               'logical_evaluation' : true
+#    #"heartbeat alert":
+#    #    "eval_criteria":
+#    #        '{
+#    #             "expression": "if R1 > 1:\n\tRESULT=(R1/R2)*200\nelse:\n\tpass\n",
+#    #             "compare_type": "greater",
+#    #             "compare_value": 1
+#    #         }'
+#    #    "subrules":
+#    #        - "test": true
+#    #        -
+#    #          "compare_type" : "greater"
+#    #          "compare_value" : 50
+#    #
+#    "heartbeat alert":
+#        "subrules":
+#    #      - "target_state": "Down"
+#           - "additionalField_Alias": ["port", "type", "host"]
+#             "rule_type": "value"
+#             "compare_value": 10
+#             "compare_type" : "greater"
+#             "selectedField": "period"
+#    #         "compare_value": "Down"
+#    #         "compare_type" : "equal"
+#    #         "selectedField": "target_state"
+#    "test":
+#        "history_to_score_mapping": [12, 8, 4, 16, 12, 8, 16, 12, 8]
+#        "subrules":
+#            -
+#              "additionalField_Alias": ["port", "period"]
+#            -
+#              "informationCollector": true
+#              "context_level": 0
+#              "bucket_size": 5
+#              "additionalField_Alias": ["target_state"]
+#    # Configuring subrule of type value
+#    #           "rule_type": "value"
+#    #           "compare_value": "00"
+#    #           "selectedField": "type"
+#    "topbeat":
+#        "subrules":
+#            - "test": true
+#              "rule_type": "value"
+#              "compare_type": "greater"
+#              "compare_value": "abc"
+#              "metricAlias": "System CPU Name"
+#              "additionalField_Alias":
+#                - "Session ID"
+#                - "Process Name"
+#            -
+#              "informationCollector": true
+#    #          "rule_type": "max"
+#              "metricAlias": "Process CPU Usage"
+#              "context_level": 1
+#              "bucket_size": 5
+#              "additionalField_Alias":
+#                - "Process Type"
+#    "State Change":
+#        # "clear_history": true
+#        "subrules":
+#            - "context_level": 1
+#            - "rule_type": "latest_value"
+#              "additionalField_Alias":
+#                - "host"
+#                - "Link State"
+#    "Link State":
+#        "subrules":
+#            - "tracking_state": "Down"
+#    "New Alert":
+#        "subrules":
+#            - "rule_type": "percentiles"
+#              "metric_arg": 90
+#              "timeshift_duration_type": "minute"
+#              "timeshift_duration": 10
+#    "Server Health":
+#        "omit_grouping_info_in_summary": true
+#        "tags":
+#          - "#ServerHealth"
+#          - "#UPIApp"
+#    "No Data From Source":
+#        "tags":
+#          - "#DataSources"
+#        "subrules":
+#            - "test": true
+#              "use_index_name_without_expansion": true
+#            - "context_level": 0
+#              "use_index_name_without_expansion": true
+#            - "context_level": 0
+#              "use_index_name_without_expansion": true

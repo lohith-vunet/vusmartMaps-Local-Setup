@@ -1,0 +1,101 @@
+# vulauncher will update this section while deployment
+vunet:
+  imageServer: &imageServer ghcr.io
+  imageName: &imageName vunetsystems/docs
+  imageTag: &imageTag ng-2.16-d11
+  # cpu and memory min and max values
+  resources: &resources
+    limits:
+      cpu: "0.5"
+      memory: 1Gi
+    requests:
+      cpu: "0.3"
+      memory: 500Mi
+  # priority node labels
+  nodeAffinity: &nodeAffinity {}
+  # tolerations
+  tolerations: &tolerations []
+  # number of pods to run
+  replicas: &replicas 1
+  # pvc size that will be claimed. For redis we will use default section. All others
+  # will be zero value
+  default:
+    size: &defaultSize ""
+    enabled: &defaultEnabled false
+    encrypted: &defaultEncrypted false
+    storageclass: &defaultStorageClass ""
+  default-replica:
+    size: &defaultReplicaSize ""
+    enabled: &defaultReplicaEnabled false
+    encrypted: &defaultReplicaEncrypted false
+    storageclass: &defaultReplicaStorageClass ""
+  host:
+    size: &hostSize ""
+    enabled: &hostEnabled false
+    encrypted: &hostEncrypted false
+    storageclass: &hostStorageClass ""
+  # ghcr credentials
+  pullSecretName: &pullSecretName ghcr-login-secret
+  dependencies: []
+#adding values for deployment.yaml file
+docsDeployment:
+  name: docs-vunet-deployment
+  replicas: *replicas
+docsContainer:
+  managementUser: vunet
+  repository: *imageServer
+  image: *imageName
+  tag: *imageTag
+  imagePullPolicy: IfNotPresent
+  imagePullSecrets:
+    - name: *pullSecretName
+  ports:
+    containerPort: 8080
+    healthCheckPort: 8080
+#adding values for myservice.yaml
+docsService:
+  name: docs-vunet
+  ports:
+    port: 3000
+    targetPort: 3000
+resources: *resources
+#requests:
+#  cpu: "100m"
+#  memory: "50Mi"
+#limits:
+#  cpu: "300m"
+#  memory: "150Mi"
+
+# will remove the existing format and replace with anchor
+nodeAffinity: *nodeAffinity
+# keyPlaceholder: keycloak
+# valuePlaceholder1: "True"
+
+tolerations: *tolerations
+podAntiAffinity:
+  keyPlaceholder: app
+  valuePlaceholder: store
+  topologyKeyPlaceholder: kubernetes.io/hostname
+env:
+  NODE_ENV: production
+  DOCS_BASE_URL: /docs
+securityContext:
+  privileged: false
+  allowPrivilegeEscalation: false # Prevent privilege escalation
+  capabilities:
+    drop: ["ALL"]
+  readOnlyRootFilesystem: true
+  runAsNonRoot: true
+  seccompProfile:
+    type: RuntimeDefault
+podSecurityContext:
+  fsGroup: 1001
+  runAsUser: 1001
+  runAsGroup: 1001
+  runAsNonRoot: true
+  seccompProfile:
+    type: RuntimeDefault
+serviceAccount:
+  create: true
+  name: docs
+  automountServiceAccountToken: false

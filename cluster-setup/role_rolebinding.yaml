@@ -1,0 +1,48 @@
+#Service Account
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: posthook-sa
+  namespace: vsmaps
+automountServiceAccountToken: true
+---
+#role 
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  namespace: vsmaps
+  name: pod-list-access
+rules:
+  - apiGroups: [""]
+    resources:
+      - pods
+      - pods/status
+    verbs:
+      - list
+
+  - apiGroups: ["apps"]
+    resources:
+      - replicasets
+      - daemonsets
+      - statefulsets
+      - deployments
+    verbs:
+      - list
+      - get
+
+
+---
+#rolebinding
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: bind-pod-list-access
+  namespace: vsmaps
+subjects:
+  - kind: ServiceAccount
+    name: posthook-sa
+    namespace: vsmaps
+roleRef:
+  kind: Role
+  name: pod-list-access
+  apiGroup: rbac.authorization.k8s.io

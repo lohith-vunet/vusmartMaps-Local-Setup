@@ -1,0 +1,80 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: discovery
+  labels:
+    app: discovery
+    managedBy: vunet
+  {{- include "cairo.labels" . | nindent 4 }}
+spec:
+  replicas: {{ .Values.discovery.replicas }}
+  selector:
+    matchLabels:
+      app: discovery
+      managedBy: vunet
+      {{- include "cairo.labels" . | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        app: discovery
+        managedBy: vunet
+        {{- include "cairo.labels" . | nindent 8 }}
+    spec:
+      {{- with .Values.discovery.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      serviceAccountName: {{ .Values.serviceAccount.name  }}
+      automountServiceAccountToken: {{ .Values.serviceAccount.automountServiceAccountToken }} #Disable SA token auto-mount
+      {{- with .Values.discovery.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- if .Values.podSecurityContext }}
+      securityContext: {{- toYaml .Values.podSecurityContext | nindent 8 }}
+      {{- end }}
+      affinity:
+        podAntiAffinity: {{- include "common.affinities.pods" (dict "type" .Values.discovery.podAntiAffinityPreset "component" "grafana" "context" $) | nindent 10 }}
+
+        {{- with .Values.discovery.affinity.nodeAffinity }}
+        nodeAffinity:
+            {{- toYaml . | nindent 10 }}
+        {{- end }}
+      containers:
+      - name: discovery
+        args: {{- toYaml .Values.discovery.args | nindent 8 }}
+        env:
+        {{- if .Values.global.extraEnvVars }}
+        {{- include "common.tplvalues.render" (dict "value" .Values.global.extraEnvVars "context" $) | nindent 8 }}
+        {{- end }}
+        {{- if .Values.securityContext }}
+        securityContext: {{- toYaml .Values.securityContext | nindent 10 }}
+        {{- end }}
+        envFrom:
+        - configMapRef:
+            name: vuinterface-config
+        - secretRef:
+              name: vuinterface-secret
+        image: {{ .Values.discovery.repository }}/{{ .Values.discovery.name }}:{{ .Values.discovery.tag
+          | default .Chart.AppVersion }}
+        imagePullPolicy: {{ .Values.discovery.pullPolicy }}
+        workingDir: /home/vunet/workspace/cairo
+        {{- if .Values.discovery.resources }}
+        resources: {{- toYaml .Values.discovery.resources | nindent 12 }}
+        {{- end }}
+        ports:
+        volumeMounts:
+        - mountPath: /home/vunet/workspace/cairo/configs/vunode_config.yml
+          name: discovery-vunode-config
+          subPath: vunode_config.yml
+        - mountPath: /home/vunet/.aws/credentials
+          name: aws-env
+          subPath: credentials
+      hostname: vunode
+      volumes:
+      - configMap:
+          name: aws-secrets
+        name: aws-env
+      - configMap:
+          name: discovery-vunode-config
+        name: discovery-vunode-config

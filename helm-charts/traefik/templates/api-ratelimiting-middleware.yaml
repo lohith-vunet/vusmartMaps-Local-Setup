@@ -1,0 +1,22 @@
+
+{{- if  .Values.ingressRoute.dashboard.enableMiddleware }}
+
+apiVersion: traefik.io/v1alpha1
+kind: Middleware
+metadata:
+  {{- with (index .Values.ingressRoute.dashboard.middlewares 3) }}
+  name: {{ .name }}
+  {{- end }}
+  namespace: {{ template "traefik.namespace" . }}
+  labels:
+    {{- include "traefik.labels" . | nindent 4 }}
+    {{- with .Values.deployment.labels }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
+spec:
+  rateLimit:
+    average: {{ .Values.apiRateLimiting.average }}
+    burst: {{ .Values.apiRateLimiting.burst }}
+    period: {{ .Values.apiRateLimiting.period }}
+
+{{- end }}

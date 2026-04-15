@@ -1,0 +1,53 @@
+# Set this to True if you want to run a light weight vuNode setup with lesser number
+# of celery worker processes
+# WARNING: DO NOT SET developer_mode to True IN PRODUCTION SETUPS
+developer_mode: False
+celery:
+    # All celery processes which are used by different proceses are defined here.
+    -
+        # Celery needed for CLI based health data collection
+        name: cli_queue
+        args: -A daq.services.scan.celery.cli_task worker -Q cli_queue --detach --loglevel=error --pidfile="/tmp/celery.%n.cli.pid" --logfile="/tmp/celery.%n.cli.log" --autoscale=10,1
+        include_in_global_instance: False
+    -
+        # Celery needed for configuration collection
+        name: config_collect_queue
+        args: -A daq.services.scan.celery.cli_task worker -Q config_collect --detach --loglevel=error --pidfile="/tmp/celery.%n.config_collect.pid" --logfile="/tmp/celery.%n.config_collect.log" --autoscale=10,1
+        # Set include_in_global_instance to False (default is True) if you want this celery not to be started as part of a global instance of
+        # celery processes
+        include_in_global_instance: False
+    -
+        # Celery needed for configuration push
+        name: config_push_queue
+        args: -A daq.services.scan.celery.cli_task worker -Q config_push --detach --loglevel=error --pidfile="/tmp/celery.%n.config_push.pid" --logfile="/tmp/celery.%n.config_push.log" --autoscale=10,1
+        # Set include_in_global_instance to False (default is True) if you want this celery not to be started as part of a global instance of
+        # celery processes
+        include_in_global_instance: False
+    -
+        # Celery needed for manual configuration collection
+        name: manual_config_collect_queue
+        args: -A daq.services.scan.celery.cli_task worker -Q manual_config_collect --detach --loglevel=error --pidfile="/tmp/celery.%n.manual_config_collect.pid" --logfile="/tmp/celery.%n.manual_config_collect.log" --concurrency=3
+        # Set include_in_global_instance to False (default is True) if you want this celery not to be started as part of a global instance of
+        # celery processes
+        include_in_global_instance: False
+    -
+        # Celery needed for manual configuration push
+        name: manual_config_push_queue
+        args: -A daq.services.scan.celery.cli_task worker -Q manual_config_push --detach --loglevel=error --pidfile="/tmp/celery.%n.manual_config_push.pid" --logfile="/tmp/celery.%n.manual_config_push.log" --concurrency=3
+        # Set include_in_global_instance to False (default is True) if you want this celery not to be started as part of a global instance of
+        # celery processes
+        include_in_global_instance: False
+
+nodes:
+    -
+        #for data collector vuNode
+        name: dcm
+
+        services:
+           -
+                # data collector generation
+               name: configuration
+               configuration:
+                    filter: "*"
+    -    
+        name: dcmcelery

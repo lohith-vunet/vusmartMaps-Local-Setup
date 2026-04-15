@@ -1,0 +1,15 @@
+# Docker images (distributed via tarball, not git)
+images/
+*.tar
+*.tar.gz
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Editor files
+*.swp
+*.swo
+*~
+.vscode/
+.idea/

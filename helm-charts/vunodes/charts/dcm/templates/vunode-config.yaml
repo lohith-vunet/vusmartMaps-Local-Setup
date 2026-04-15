@@ -1,0 +1,12 @@
+---
+apiVersion: v1
+data:
+  {{- $files := .Files }}
+  {{- range tuple "vunode_config.yml" }}
+  {{ . }}: |-
+        {{ $files.Get . | nindent 8 }}
+  {{- end }}
+kind: ConfigMap
+metadata:
+  creationTimestamp: null
+  name: dcm-vunode-config

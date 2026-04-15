@@ -1,0 +1,11 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: vusoft-logging-conf
+  labels:
+  {{- include "cairo.labels" . | nindent 4 }}
+  namespace: {{ .Release.Namespace }}
+data:
+  vusoft_logging.conf: |
+{{ (.Files.Get "files/vusoft_logging.conf") | indent 4 }}
+

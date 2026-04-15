@@ -1,0 +1,818 @@
+apiVersion: "clickhouse.altinity.com/v1"
+kind: "ClickHouseInstallation"
+metadata:
+  name: "clickhouse"
+spec:
+  defaults:
+    storageManagement:
+      provisioner: StatefulSet
+      reclaimPolicy: Retain
+    templates:
+      podTemplate: clickhouse-stable
+      serviceTemplate: svc-template
+      clusterServiceTemplate: cluster-service-template
+      shardServiceTemplate: archival-service-template
+      dataVolumeClaimTemplate: clickhouse-data-volume
+  configuration:
+    clusters:
+      - name: {{ .Values.clusterName }}
+        layout:
+          shardsCount: {{ .Values.shardCount }}
+          replicasCount: {{ .Values.replicaCount }}
+    {{- if .Values.secure }}
+        secure: "yes"
+    settings:
+      tcp_port_secure: 9000
+      https_port: 8123
+      interserver_https_port: 9009
+      interserver_http_port: _removed_
+      tcp_port: _removed_
+      http_port: _removed_
+    {{- end }}
+    zookeeper:
+        nodes:
+        - host: clickhouse-keeper.vsmaps
+          port: 2181
+          {{- if .Values.secure }}
+          secure: "1"
+          {{- end }}
+
+    profiles:
+      vusmartreadonly/readonly: "1"
+      # server level settings can be set here
+      vusmart/data_type_default_nullable: 1 # data types in column definitions are set to Nullable by default
+      vusmart/insert_distributed_sync: 1 # Data is inserted in synchronous mode
+      vusmart/mutations_sync: 2 # query waits for all mutations to complete on all replicas
+      vusmart/parallel_distributed_insert_select: 2 # SELECT and INSERT will be executed on each shard in parallel
+      vusmart/distributed_product_mode: allow # Allows the use of these types of subqueries
+      default/allow_experimental_analyzer: 0 # Enabling this setting leads to a bug as of ver 24.7
+      default/enable_named_columns_in_function_tuple: 0 # Enabling this breaks a few of the current MVs used in vublocks
+      vusmart/allow_experimental_analyzer: 0  # Enabling this setting leads to a bug as of ver 24.7
+      vusmart/enable_named_columns_in_function_tuple: 0 # Enabling this breaks a few of the current MVs used in vublocks
+      default/max_memory_usage: 3000000000   # Maximum memory usage for a query
+      default/max_result_rows: 300000        # Maximum number of rows returned in the result set
+      default/enable_json_type: 1
+      default/date_time_input_format: "best_effort"
+    files:
+      /users.d/vusmart.xml: |-
+        <clickhouse>
+            <users>
+                <vusmart>
+                    <access_management>0</access_management>
+                    <password from_env="VUSMART_USER_PASSWORD"></password>
+                    <grants>
+                        <query>GRANT SELECT ON *.*</query>
+                        <query>GRANT dictGet ON *.*</query>
+                        <query>GRANT REMOTE ON *.*</query>
+                    </grants>
+                </vusmart>
+            </users>
+        </clickhouse>
+      /users.d/vusmartinternal.xml: |-
+        <clickhouse>
+            <users>
+                <vusmartinternal>
+                    <access_management>0</access_management>
+                    <password from_env="VUSMART_INTERNAL_USER_PASSWORD"></password>
+                    <grants>
+                        <query>GRANT SELECT ON *.*</query>
+                        <query>GRANT ALTER ON *.*</query>
+                        <query>GRANT CLUSTER ON *.*</query>
+                        <query>GRANT dictGet ON *.*</query>
+                        <query>GRANT REMOTE ON *.*</query>
+                    </grants>
+                </vusmartinternal>
+            </users>
+        </clickhouse>
+
+      /users.d/vusmartmanager.xml: |-
+        <clickhouse>
+            <users>
+                <vusmartmanager>
+                    <access_management>0</access_management>
+                    <password from_env="VUSMART_MANAGER_USER_PASSWORD"></password>
+                    <grants>
+                        <query>GRANT ALL ON *.* WITH GRANT OPTION</query>
+                    </grants>
+                </vusmartmanager>
+            </users>
+        </clickhouse>
+
+      config.d/openssl.xml: |-
+        <clickhouse>
+            <openSSL>
+              {{- if .Values.secure }}
+              <server>
+              <certificateFile>/etc/clickhouse-server/secrets.d/server.crt</certificateFile>
+              <privateKeyFile>/etc/clickhouse-server/secrets.d/server.key</privateKeyFile>
+              <caConfig>/etc/clickhouse-server/secrets.d/rootCA.crt</caConfig>
+              <verificationMode>none</verificationMode>
+              <loadDefaultCAFile>false</loadDefaultCAFile>
+              <cacheSessions>true</cacheSessions>
+              <disableProtocols>sslv2,sslv3</disableProtocols>
+              <preferServerCiphers>true</preferServerCiphers>
+            </server>
+            {{- end }}
+            <client>
+              {{- if .Values.secure }}
+              <loadDefaultCAFile>false</loadDefaultCAFile>
+              <caConfig>/etc/clickhouse-server/secrets.d/rootCA.crt</caConfig>
+              <cacheSessions>true</cacheSessions>
+              <disableProtocols>sslv2,sslv3</disableProtocols>
+              <preferServerCiphers>true</preferServerCiphers>
+              <invalidCertificateHandler>
+                  <name>RejectCertificateHandler</name>
+              </invalidCertificateHandler>
+              {{- end }}
+              <verificationMode>none</verificationMode>
+            </client>
+          </openSSL>
+        </clickhouse>
+
+      config.d/disable_emulation_ports.xml: |-
+        <clickhouse>
+            <mysql_port remove="true" />
+            <postgresql_port remove="true" />
+        </clickhouse>
+      # Kafka Table Engine requires this config when connecting to SSL enabled Kafka broker
+      {{- if .Values.secure_kafka }}
+      config.d/ssl_kafka.xml: |-
+        <clickhouse>
+          <kafka>
+            <security_protocol>SSL</security_protocol>
+            <ssl_ca_location>/etc/clickhouse-server/secrets.d/rootCA.crt</ssl_ca_location>
+            <ssl_certificate_location>/etc/clickhouse-server/secrets.d/server.crt</ssl_certificate_location>
+            <ssl_key_location>/etc/clickhouse-server/secrets.d/server.key</ssl_key_location>
+            <debug>all</debug>
+          </kafka>
+        </clickhouse>
+      {{- end }}
+
+      # Recommended setting for changing hostnames like in K8s
+      config.d/disable_dns_cache.xml: |-
+        <clickhouse>
+            <disable_internal_dns_cache>1</disable_internal_dns_cache>
+        </clickhouse>
+      config.d/syslog.xml: |-
+        <clickhouse>
+            <query_log replace="1">
+                <database>system</database>
+                <table>query_log</table>
+                <partition_by>{{ .Values.override_config.systemTablePartitionBy }}(event_date)</partition_by>
+                <ttl>event_date + INTERVAL {{ .Values.override_config.systemTableRetentionDays }} DAY DELETE</ttl>
+            </query_log>
+            <metric_log replace="1">
+                <database>system</database>
+                <table>metric_log</table>
+                <partition_by>{{ .Values.override_config.systemTablePartitionBy }}(event_date)</partition_by>
+                <ttl>event_date + INTERVAL {{ .Values.override_config.systemTableRetentionDays }} DAY DELETE</ttl>
+            </metric_log>
+            <trace_log replace="1">
+                <database>system</database>
+                <table>trace_log</table>
+                <partition_by>{{ .Values.override_config.systemTablePartitionBy }}(event_date)</partition_by>
+                <ttl>event_date + INTERVAL {{ .Values.override_config.systemTableRetentionDays }} DAY DELETE</ttl>
+            </trace_log>
+            <part_log replace="1">
+                <database>system</database>
+                <table>part_log</table>
+                <partition_by>{{ .Values.override_config.systemTablePartitionBy }}(event_date)</partition_by>
+                <ttl>event_date + INTERVAL {{ .Values.override_config.systemTableRetentionDays }} DAY DELETE</ttl>
+            </part_log>
+            <text_log replace="1">
+                <database>system</database>
+                <table>text_log</table>
+                <partition_by>{{ .Values.override_config.systemTablePartitionBy }}(event_date)</partition_by>
+                <ttl>event_date + INTERVAL {{ .Values.override_config.systemTableRetentionDays }} DAY DELETE</ttl>
+            </text_log>
+            <crash_log replace="1">
+                <database>system</database>
+                <table>crash_log</table>
+                <partition_by>{{ .Values.override_config.systemTablePartitionBy }}(event_date)</partition_by>
+                <ttl>event_date + INTERVAL {{ .Values.override_config.systemTableRetentionDays }} DAY DELETE</ttl>
+            </crash_log>
+         </clickhouse>
+      config.d/Data_Retention_config.xml: |-
+        <clickhouse>
+           <storage_configuration>
+              <disks>
+              {{- if or .Values.persistence.hot.enabled .Values.persistence.defaultHot.enabled .Values.persistence.host.hot.enabled }}
+                <default>
+                </default>
+              {{- if or .Values.persistence.hot.encrypted .Values.persistence.defaultHot.encrypted .Values.persistence.host.encrypted }}
+                <default_encrypted_disk>
+                    <type>encrypted</type>
+                    <disk>default</disk>
+                    <algorithm>AES_128_CTR</algorithm>
+                    <key_hex from_env="KEY_HEX"></key_hex>
+                    <current_key_id>0</current_key_id>
+                </default_encrypted_disk>
+              {{- end }}
+              {{- end }}
+              {{- if or .Values.persistence.warm.enabled .Values.persistence.defaultWarm.enabled .Values.persistence.host.warm.enabled }}
+                <warm_disk>
+                        <type>local</type>
+                        <path>{{- if .Values.persistence.warm.enabled }}{{ .Values.persistence.warm.path }}{{- else }}{{ .Values.persistence.defaultWarm.path }}{{- end }}</path>
+                </warm_disk>
+              {{- if or .Values.persistence.warm.encrypted .Values.persistence.defaultWarm.encrypted .Values.persistence.host.encrypted }}
+                <warm_encrypted_disk>
+                    <type>encrypted</type>
+                    <disk>warm_disk</disk>
+                    <algorithm>AES_128_CTR</algorithm>
+                    <key_hex from_env="KEY_HEX"></key_hex>
+                    <current_key_id>0</current_key_id>
+                </warm_encrypted_disk>
+              {{- end }}
+              {{- end }}
+              </disks>
+              <policies>
+                 <default>
+                   <volumes>
+                   {{- if or .Values.persistence.hot.encrypted .Values.persistence.defaultHot.encrypted .Values.persistence.host.encrypted }}
+                     <hot_volume>
+                         <disk>default_encrypted_disk</disk>
+                     </hot_volume>
+                   {{- else }}
+                   <hot_volume>
+                         <disk>default</disk>
+                     </hot_volume>
+                   {{- end }}
+                   {{- if or .Values.persistence.warm.enabled .Values.persistence.defaultWarm.enabled .Values.persistence.host.warm.enabled }}
+                   {{- if or .Values.persistence.warm.encrypted .Values.persistence.defaultWarm.encrypted .Values.persistence.host.encrypted }}
+                     <warm_volume>
+                         <disk>warm_encrypted_disk</disk>
+                     </warm_volume>
+                    {{- else }}
+                    <warm_volume>
+                         <disk>warm_disk</disk>
+                     </warm_volume>
+                    {{- end }}
+                    {{- end }}
+                   </volumes>
+                 </default>
+              </policies>
+           </storage_configuration>
+        </clickhouse>
+      config.d/log_rotation.xml: |-
+        <clickhouse>
+            <timezone>UTC</timezone>
+            <default_replica_path>/clickhouse/tables/{uuid}/{shard}</default_replica_path>
+            <default_replica_name>{replica}</default_replica_name>
+            <logger>
+                <level>{{ .Values.override_config.loggingLevel }}</level>
+                <log>/var/log/clickhouse-server/clickhouse-server.log</log>
+                <errorlog>/var/log/clickhouse-server/clickhouse-server.err.log</errorlog>
+                <size>100M</size>
+                <count>5</count>
+                <console>1</console>
+            </logger>
+            <access_control_improvements>
+                <!-- Enables logic that users without permissive row policies can still read rows using a SELECT query.
+                     For example, if there two users A, B and a row policy is defined only for A, then
+                     if this setting is true the user B will see all rows, and if this setting is false the user B will see no rows.
+                     By default this setting is false for compatibility with earlier access configurations. -->
+                <users_without_row_policies_can_read_rows>true</users_without_row_policies_can_read_rows>
+
+                <!-- By default, for backward compatibility ON CLUSTER queries ignore CLUSTER grant,
+                     however you can change this behaviour by setting this to true -->
+                <on_cluster_queries_require_cluster_grant>false</on_cluster_queries_require_cluster_grant>
+
+                <!-- By default, for backward compatibility "SELECT * FROM system.<table>" doesn't require any grants and can be executed
+                     by any user. You can change this behaviour by setting this to true.
+                     If it's set to true then this query requires "GRANT SELECT ON system.<table>" just like as for non-system tables.
+                     Exceptions: a few system tables ("tables", "columns", "databases", and some constant tables like "one", "contributors")
+                     are still accessible for everyone; and if there is a SHOW privilege (e.g. "SHOW USERS") granted the corresponding system
+                     table (i.e. "system.users") will be accessible. -->
+                <select_from_system_db_requires_grant>false</select_from_system_db_requires_grant>
+
+                <!-- By default, for backward compatibility "SELECT * FROM information_schema.<table>" doesn't require any grants and can be
+                     executed by any user. You can change this behaviour by setting this to true.
+                     If it's set to true then this query requires "GRANT SELECT ON information_schema.<table>" just like as for ordinary tables. -->
+                <select_from_information_schema_requires_grant>false</select_from_information_schema_requires_grant>
+
+                <!-- By default, for backward compatibility a settings profile constraint for a specific setting inherit every not set field from
+                     previous profile. You can change this behaviour by setting this to true.
+                     If it's set to true then if settings profile has a constraint for a specific setting, then this constraint completely cancels all
+                     actions of previous constraint (defined in other profiles) for the same specific setting, including fields that are not set by new constraint.
+                     It also enables 'changeable_in_readonly' constraint type -->
+                <settings_constraints_replace_previous>false</settings_constraints_replace_previous>
+
+                <!-- Number of seconds since last access a role is stored in the Role Cache -->
+                <role_cache_expiration_time_seconds>600</role_cache_expiration_time_seconds>
+            </access_control_improvements>
+        </clickhouse>
+
+  templates:
+    serviceTemplates:
+      - name: cluster-service-template
+        generateName: "hyperscale"
+        metadata:
+          labels:
+            organization: "vunet"
+          annotations:
+            cloud.google.com/load-balancer-type: "Internal"
+            service.beta.kubernetes.io/aws-load-balancer-internal: 0.0.0.0/0
+            service.beta.kubernetes.io/azure-load-balancer-internal: "true"
+            service.beta.kubernetes.io/openstack-internal-load-balancer: "true"
+            service.beta.kubernetes.io/cce-load-balancer-internal-vpc: "true"
+        spec:
+          ports:
+            {{- if .Values.secure }}
+            - name: https
+            {{- else }}
+            - name: http
+            {{- end }}
+              port: 8123
+            {{- if .Values.secure }}
+            - name: secure-tcp
+            {{- else }}
+            - name: tcp
+            {{- end }}
+              port: 9000
+          type: {{ .Values.service.type }}
+      - name: svc-template
+        generateName: "clickhouse"
+        metadata:
+          labels:
+            organization: "vunet"
+          annotations:
+            cloud.google.com/load-balancer-type: "Internal"
+            service.beta.kubernetes.io/aws-load-balancer-internal: 0.0.0.0/0
+            service.beta.kubernetes.io/azure-load-balancer-internal: "true"
+            service.beta.kubernetes.io/openstack-internal-load-balancer: "true"
+            service.beta.kubernetes.io/cce-load-balancer-internal-vpc: "true"
+        spec:
+          ports:
+            {{- if .Values.secure }}
+            - name: https
+            {{- else }}
+            - name: http
+            {{- end }}
+              port: 8123
+            {{- if .Values.secure }}
+            - name: secure-tcp
+            {{- else }}
+            - name: tcp
+            {{- end }}
+              port: 9000
+          type: {{ .Values.service.type }}
+      - name: archival-service-template
+        generateName: "hyperscale-archival-{cluster}-{shard}"
+        metadata:
+          labels:
+            organization: "vunet"
+          annotations:
+            cloud.google.com/load-balancer-type: "Internal"
+            service.beta.kubernetes.io/aws-load-balancer-internal: 0.0.0.0/0
+            service.beta.kubernetes.io/azure-load-balancer-internal: "true"
+            service.beta.kubernetes.io/openstack-internal-load-balancer: "true"
+            service.beta.kubernetes.io/cce-load-balancer-internal-vpc: "true"
+        spec:
+          ports:
+            - name: hyperscale-archival
+              port: {{ .Values.archival.port }}
+    podTemplates:
+    - name: clickhouse-stable
+      metadata:
+        labels:
+          organization: vunet
+          app: chdb
+        annotations:
+          {{- include "cairo.annotations" . | nindent 10 }}
+      spec:
+        {{- with .Values.imagePullSecrets }}
+        imagePullSecrets:
+        {{- toYaml . | nindent 10 }}
+        {{- end }}
+        automountServiceAccountToken: {{ .Values.serviceAccount.automountServiceAccountToken }}  #Disable SA token auto-mount
+        serviceAccountName: {{ .Values.serviceAccount.name  }}
+        {{- if .Values.podSecurityContext }}
+        securityContext: {{- toYaml .Values.podSecurityContext | nindent 10 }}
+        {{- end }}
+        {{- if .Values.tolerations }}
+        tolerations:
+{{ toYaml .Values.tolerations | indent 10 }}
+        {{- end }}
+
+        affinity:
+            podAntiAffinity:
+              requiredDuringSchedulingIgnoredDuringExecution:
+                - labelSelector:
+                    matchExpressions:
+                      - key: "app"
+                        operator: In
+                        values:
+                          - "chdb"
+                  topologyKey: "kubernetes.io/hostname"
+            {{- if .Values.nodeAffinity }}
+            nodeAffinity: {{- toYaml .Values.nodeAffinity | nindent 14 }}
+            {{- end }}
+        containers:
+        - name: clickhouse
+          imagePullPolicy: IfNotPresent
+          image: {{ .Values.image.repository }}/{{ .Values.image.name }}:{{ .Values.image.tag | default .Chart.AppVersion }}
+          env:
+          - name: VUSMART_MANAGER_USER_PASSWORD
+            valueFrom:
+              secretKeyRef:
+                name: ch-database-secret
+                key: VUSMART_MANAGER_USER_PASSWORD
+          - name: VUSMART_INTERNAL_USER_PASSWORD
+            valueFrom:
+              secretKeyRef:
+                name: ch-database-secret
+                key: VUSMART_INTERNAL_USER_PASSWORD
+          - name: VUSMART_USER_PASSWORD
+            valueFrom:
+              secretKeyRef:
+                name: ch-database-secret
+                key: VUSMART_USER_PASSWORD
+          - name: MINIO_ACCESS_KEY
+            valueFrom:
+              secretKeyRef:
+                name: secret-env
+                key: access_key
+          - name: MINIO_SECRET_KEY
+            valueFrom:
+              secretKeyRef:
+                name: secret-env
+                key: secret_key
+          - name: KEY_HEX
+            valueFrom:
+              secretKeyRef:
+                name: secret-env
+                key: key_hex
+          ports:
+          - containerPort: 9000
+            {{- if .Values.host.enabled }}
+            hostPort: 9000
+            {{- end }}
+            {{- if .Values.secure }}
+            name: secure-ch-api
+            {{- else }}
+            name: clickhouse-api
+            {{- end }}
+          - containerPort: 8123
+            {{- if .Values.host.enabled }}
+            hostPort: 8123
+            {{- end }}
+            {{- if .Values.secure }}
+            name: ch-https
+            {{- else }}
+            name: clickhouse-http
+            {{- end }}
+          {{- if .Values.securityContext }}
+          securityContext: {{- toYaml .Values.securityContext | nindent 14 }}
+          {{- end }}
+          lifecycle:
+            postStart:
+              exec:
+                command: ["/bin/bash", "-c", "mkdir -p /var/lib/clickhouse/flags; touch /var/lib/clickhouse/flags/force_restore_data"]
+          {{- if .Values.secure }}
+          livenessProbe:
+            httpGet:
+              path: /ping
+              port: ch-https
+              scheme: HTTPS
+            initialDelaySeconds: 60
+            periodSeconds: 5
+            timeoutSeconds: 3
+          readinessProbe:
+            httpGet:
+              path: /ping
+              port: ch-https
+              scheme: HTTPS
+            initialDelaySeconds: 30
+            periodSeconds: 5
+            timeoutSeconds: 3
+          {{- end }}
+          {{- if .Values.resources }}
+          resources:
+            requests:
+              memory: {{ .Values.resources.requests.memory | quote}}
+              cpu: {{ .Values.resources.requests.cpu | quote}}
+            limits:
+              memory: {{ .Values.resources.limits.memory | quote}}
+              cpu: {{ .Values.resources.limits.cpu | quote}}
+          {{- end }}
+          volumeMounts:
+            - name: resolution-scripts
+              mountPath: /var/lib/clickhouse/user_scripts/resolution-scripts
+          {{- if .Values.secure }}
+            - name: secure-ch-client-config
+              mountPath: /etc/clickhouse-client
+              readOnly: true
+          {{- end }}
+          {{- if or .Values.secure .Values.secure_kafka }}
+            - name: secret-certs
+              mountPath: /etc/clickhouse-server/secrets.d
+              readOnly: true
+          {{- end }}
+          {{- if .Values.persistence.hot.enabled }}
+            - name: clickhouse-data-volume
+              mountPath: {{ .Values.persistence.hot.path }}
+          {{- else if .Values.persistence.defaultHot.enabled }}
+            - name: clickhouse-data-volume
+              mountPath: {{ .Values.persistence.defaultHot.path }}
+          {{- else if .Values.persistence.host.hot.enabled }}
+            - name: clickhouse-data-volume
+              mountPath: {{ .Values.persistence.host.hot.path }}
+          {{- end }}
+          {{- if .Values.persistence.warm.enabled }}
+            - name: warm
+              mountPath: {{ .Values.persistence.warm.path }}
+          {{- else if .Values.persistence.defaultWarm.enabled }}
+            - name: warm
+              mountPath: {{ .Values.persistence.defaultWarm.path }}
+          {{- else if .Values.persistence.host.warm.enabled }}
+            - name: warm
+              mountPath: {{ .Values.persistence.host.warm.path }}
+          {{- end }}
+          {{- if .Values.securityContext.readOnlyRootFilesystem }}
+            - name: clickhouse-log
+              mountPath: /var/log/clickhouse-server
+            - name: tmp-dir
+              mountPath: /tmp
+              readOnly: false
+          {{- end }}
+        {{- if .Values.persistence.cold.enabled }}
+        - name: hyperscale-archival
+          image: {{ .Values.archival.repository }}/{{ .Values.archival.image }}
+          imagePullPolicy: IfNotPresent
+          {{- if .Values.securityContext }}
+          securityContext: {{- toYaml .Values.securityContext | nindent 14 }}
+          {{- end }}  
+          command:
+            - bash
+            - -xc
+            - "/bin/clickhouse-backup server"
+          env:
+            - name: CLICKHOUSE_PORT
+              value: {{ .Values.chPort | quote }}
+            - name: CLICKHOUSE_CHECK_REPLICAS_BEFORE_ATTACH
+              value: {{ .Values.archival.checkReplicasBeforeAttach | quote }}
+            - name: RESTORE_SCHEMA_ON_CLUSTER
+              value: vusmart
+            - name: LOG_LEVEL
+              value: {{ .Values.archival.logLevel | quote }}
+            - name: ALLOW_EMPTY_BACKUPS
+              value: {{ .Values.archival.allowEmptyBackups | quote }}
+            - name: API_CREATE_INTEGRATION_TABLES
+              value: {{ .Values.archival.apiCreateIntegrationTables | quote }}
+            - name: API_LISTEN
+              value: "0.0.0.0:{{ .Values.archival.port }}"
+            - name: REMOTE_STORAGE
+              value: {{ .Values.archival.remoteStorage | quote }}
+            - name: BACKUPS_TO_KEEP_REMOTE
+              value: {{ .Values.archival.backupsToKeepRemote | quote }}
+            - name: S3_ENDPOINT
+              {{- if .Values.secure_minio }}
+              value: {{ .Values.archival.s3SecureEndpoint | quote }}
+              {{- else }}
+              value: {{ .Values.archival.s3Endpoint | quote }}
+              {{- end }}
+            - name: S3_BUCKET
+              value: {{ .Values.archival.s3Bucket | quote }}
+            - name: S3_PATH
+              value: {{ .Values.archival.s3Path | quote }}
+            - name: S3_FORCE_PATH_STYLE
+              value: {{ .Values.archival.s3ForcePathStyle | quote }}
+            # for tests only do not use in production
+            - name: S3_DISABLE_CERT_VERIFICATION
+              value: {{ .Values.archival.s3DisableCertVerification | quote }}
+            # look to /deploy/minio/install-minio-tenant.sh
+            - name: S3_ACCESS_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: secret-env
+                  key: access_key
+            - name: S3_SECRET_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: secret-env
+                  key: secret_key
+            {{- if .Values.secure }}
+            - name: CLICKHOUSE_SECURE
+              value: {{ .Values.secure | quote }}
+            - name: CLICKHOUSE_TLS_CA
+              value: {{ .Values.override_config.rootCAPath | quote }}
+            - name: CLICKHOUSE_TLS_CERT
+              valueFrom:
+                secretKeyRef:
+                  name: ch-database-secret
+                  key: SERVER_CERT_PATH
+            - name: CLICKHOUSE_TLS_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: ch-database-secret
+                  key: SERVER_KEY_PATH
+            - name: CLICKHOUSE_SKIP_VERIFY
+              value: {{ .Values.override_config.skipHostVerify | quote }}
+            {{- end }}
+          ports:
+            - name: archival-rest
+              containerPort: {{ .Values.archival.port }}
+          livenessProbe:
+            httpGet:
+              path: /
+              port: archival-rest
+              scheme: HTTP
+            initialDelaySeconds: 60
+            periodSeconds: 10
+            timeoutSeconds: 3
+          readinessProbe:
+            httpGet:
+              path: /
+              port: archival-rest
+              scheme: HTTP
+            initialDelaySeconds: 60
+            periodSeconds: 10
+            timeoutSeconds: 5
+          volumeMounts:
+            {{- if .Values.persistence.hot.enabled }}
+            - name: clickhouse-data-volume
+              mountPath: {{ .Values.persistence.hot.path }}
+            {{- else if .Values.persistence.defaultHot.enabled }}
+            - name: clickhouse-data-volume
+              mountPath: {{ .Values.persistence.defaultHot.path }}
+            {{- else if .Values.persistence.host.hot.enabled }}
+            - name: clickhouse-data-volume
+              mountPath: {{ .Values.persistence.host.hot.path }}
+            {{- end }}
+            {{- if .Values.persistence.warm.enabled }}
+            - name: warm
+              mountPath: {{ .Values.persistence.warm.path }}
+            {{- else if .Values.persistence.defaultWarm.enabled }}
+            - name: warm
+              mountPath: {{ .Values.persistence.defaultWarm.path }}
+            {{- else if .Values.persistence.host.warm.enabled }}
+            - name: warm
+              mountPath: {{ .Values.persistence.host.warm.path }}
+            {{- end }}
+            {{- if .Values.secure }}
+            - name: secret-certs
+              mountPath: /etc/secrets.d
+            {{- end }}
+        {{- end }}
+        - name: ch-local-monit
+          securityContext:
+          {{- toYaml (.Values.monit.securityContext | default dict) | nindent 12 }}
+          image: {{ .Values.monit.repository }}/{{ .Values.monit.image }}
+          imagePullPolicy: IfNotPresent
+          resources:
+            limits:
+              cpu: {{ .Values.monit.resources.limits.cpu | quote }}
+              memory: {{ .Values.monit.resources.limits.memory | quote }}
+            requests:
+              cpu: {{ .Values.monit.resources.requests.cpu | quote }}
+              memory: {{ .Values.monit.resources.requests.memory | quote }}
+          env:
+          - name: HOSTNAME
+            valueFrom:
+              fieldRef:
+                fieldPath: spec.nodeName
+          - name: CH_HOSTNAME
+            valueFrom:
+              fieldRef:
+                apiVersion: v1
+                fieldPath: metadata.name
+          - name: CH_CLUSTER
+            value: {{ .Values.clusterName }}
+          - name: CH_HOST
+            value: "localhost"
+          - name: CH_PORT
+            value: {{ .Values.chPort | quote}}
+          - name: CH_MONIT_PORT
+            value: {{ .Values.chPort | quote}}
+          {{- if .Values.monit.useMainCluster }}
+          - name: CH_MONIT_HOST
+            value: "localhost"
+          {{- else }}
+          - name: CH_MONIT_HOST
+            value: {{ .Values.monit.monitService }}
+          {{- end }}
+          - name: SECURE
+            value: {{ .Values.secure | quote }}
+          - name: ROOT_CA_PATH
+            value: {{ .Values.override_config.rootCAPath | quote }}
+          - name: SERVER_CERT_PATH
+            valueFrom:
+              secretKeyRef:
+                name: ch-database-secret
+                key: SERVER_CERT_PATH
+          - name: SERVER_KEY_PATH
+            valueFrom:
+              secretKeyRef:
+                name: ch-database-secret
+                key: SERVER_KEY_PATH
+          - name: VUSMART_USERNAME
+            valueFrom:
+              secretKeyRef:
+                name: ch-database-secret
+                key: VUSMART_USERNAME
+          - name: VUSMART_PASSWORD
+            valueFrom:
+              secretKeyRef:
+               name: ch-database-secret
+               key: VUSMART_PASSWORD
+          - name: DNS_USERNAME
+            valueFrom:
+              secretKeyRef:
+                name: ch-database-secret
+                key: DNS_USERNAME
+          - name: DNS_PASSWORD
+            valueFrom:
+              secretKeyRef:
+                name: ch-database-secret
+                key: DNS_PASSWORD
+          - name: SKIP_HOST_VERIFY
+            value: {{ .Values.override_config.skipHostVerify | quote }}
+          volumeMounts:
+          - name: config
+            mountPath: /etc/telegraf
+          {{- if .Values.secure }}
+          - name: secret-certs
+            mountPath: /etc/secrets.d
+            readOnly: true
+          {{- end }}
+        volumes:
+        - name: resolution-scripts
+          configMap:
+            name: resolution-scripts
+            defaultMode: 0777
+        - name: config
+          configMap:
+            name: ch-local-monit-cm
+        {{- if .Values.secure }}
+        - name: secure-ch-client-config
+          configMap:
+            name: ssl-ch-client-config
+        {{- end }}
+        {{- if or .Values.secure .Values.secure_kafka }}
+        - name: secret-certs
+          secret:
+            secretName: ssl-certs
+        {{- end }}
+      {{- if .Values.securityContext.readOnlyRootFilesystem }}
+        - name: clickhouse-log
+          emptyDir: {}
+        - name: tmp-dir
+          emptyDir: {}
+      {{- end }}
+    volumeClaimTemplates:
+    {{- if .Values.persistence.hot.enabled }}
+      - name: clickhouse-data-volume
+        spec:
+          storageClassName: {{ .Values.persistence.hot.storageClass  }}
+          accessModes:
+            - ReadWriteOnce
+          resources:
+            requests:
+              storage: {{ .Values.persistence.hot.storageRequest }}
+    {{- else if .Values.persistence.defaultHot.enabled }}
+      - name: clickhouse-data-volume
+        spec:
+          storageClassName: {{ .Values.persistence.defaultHot.storageClass }}
+          accessModes:
+            - ReadWriteOnce
+          resources:
+            requests:
+              storage: {{ .Values.persistence.defaultHot.storageRequest }}
+    {{- else if .Values.persistence.host.hot.enabled }}
+      - name: clickhouse-data-volume
+        spec:
+          storageClassName: local-storage
+          accessModes:
+            - ReadWriteOnce
+          resources:
+            requests:
+              storage: {{ .Values.persistence.host.hot.storageRequest }}
+    {{- end }}
+    {{- if .Values.persistence.warm.enabled }}
+      - name: warm
+        spec:
+          storageClassName: {{ .Values.persistence.warm.storageClass  }}
+          accessModes:
+            - ReadWriteOnce
+          resources:
+            requests:
+              storage: {{ .Values.persistence.warm.storageRequest }}
+    {{- else if .Values.persistence.defaultWarm.enabled }}
+      - name: warm
+        spec:
+          storageClassName: {{ .Values.persistence.defaultWarm.storageClass }}
+          accessModes:
+            - ReadWriteOnce
+          resources:
+            requests:
+              storage: {{ .Values.persistence.defaultWarm.storageRequest }}
+    {{- else if .Values.persistence.host.warm.enabled }}
+      - name: warm
+        spec:
+          storageClassName: local-storage
+          accessModes:
+            - ReadWriteOnce
+          resources:
+            requests:
+              storage: {{ .Values.persistence.host.warm.storageRequest }}
+    {{- end }}

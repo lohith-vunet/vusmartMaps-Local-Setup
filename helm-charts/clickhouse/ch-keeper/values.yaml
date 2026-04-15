@@ -1,0 +1,205 @@
+# vulauncher will update this section while deployment
+vunet:
+  imageServer: &imageServer ghcr.io
+  imageName: &imageName vunetsystems/clickhouse-keeper
+  imageTag: &imageTag "25.3"
+  # cpu and memory min and max values
+  resources: &resources
+    limits:
+      cpu: "0.5"
+      memory: 2Gi
+    requests:
+      cpu: "0.3"
+      memory: 500Mi
+  # priority node labels
+  nodeAffinity: &nodeAffinity {}
+  # tolerations
+  tolerations: &tolerations []
+  # number of pods to run
+  replicas: &replicas 1
+  # pvc size that will be claimed. For clickhouse keeper, we will use default storage
+  # others will have zero values.
+  hot:
+    size: &hotSize ""
+    enabled: &hotEnabled false
+    encrypted: &hotEncrypted false
+    storageclass: &hotStorageClass ""
+  warm:
+    size: &warmSize ""
+    enabled: &warmEnabled false
+    encrypted: &warmEncrypted false
+    storageclass: &warmStorageClass ""
+  cold:
+    size: &coldSize ""
+    enabled: &coldEnabled false
+    encrypted: &coldEncrypted false
+    storageclass: &coldStorageClass ""
+  default:
+    size: &defaultSize ""
+    enabled: &defaultEnabled false
+    encrypted: &defaultEncrypted false
+    storageclass: &defaultStorageClass ""
+  default-replica:
+    size: &defaultReplicaSize ""
+    enabled: &defaultReplicaEnabled false
+    encrypted: &defaultReplicaEncrypted false
+    storageclass: &defaultReplicaStorageClass ""
+  host:
+    size: &hostSize 5Gi
+  # ghcr credentials
+  pullSecretName: &pullSecretName ghcr-login-secret
+  #
+  # dependencies will be list of helm chart path, which would be required for the current
+  # chart. We will install its dependant helm charts first, then current helm chart
+  # will be installed
+  dependencies:
+    - "longhorn"
+    - "ch-operator"
+# Default values for clickhouse-keeper.
+# This is a YAML-formatted file.
+# Declare variables to be passed into your templates.
+securityContext:
+  privileged: false
+  allowPrivilegeEscalation: false # Prevent privilege escalation
+  capabilities:
+    add: ["CAP_NET_RAW", "SYS_NICE", "IPC_LOCK"]
+  readOnlyRootFilesystem: true # Blocks the container to modify the root filesystem.
+  runAsNonRoot: true
+  seccompProfile:
+    type: RuntimeDefault
+podSecurityContext:
+  fsGroup: 101
+  runAsUser: 101
+  runAsGroup: 101
+  runAsNonRoot: true
+  seccompProfile:
+    type: RuntimeDefault
+serviceAccount:
+  create: true
+  name: ch-keeper
+  automountServiceAccountToken: false
+replicaCount: *replicas
+image:
+  repository: *imageServer
+  name: *imageName
+  pullPolicy: IfNotPresent
+  # Overrides the image tag whose default is the chart appVersion.
+  tag: *imageTag
+imagePullSecrets:
+  - name: *pullSecretName
+nameOverride: ""
+fullnameOverride: "clickhouse-keeper"
+podAnnotations: {}
+service:
+  type: ClusterIP
+  clientPort: 2181
+  prometheusPort: 7000
+# Enable SSL for all external and internal communication
+secure: false
+#localStorage Class pvMapping, It will come from sizing file
+#pvMapping:
+#  "0":
+#    nodeName: "node1" # replica-1
+#    hostPath: "/data1"
+#    storageClass: local-storage
+#    size: "25Gi"
+#  "1":
+#    nodeName: "node2" # replica-2
+#    hostPath: "/data2"
+#    storageClass: local-storage
+#    size: "25Gi"
+#  "2":
+#    nodeName: "node3" # replica-3
+#    hostPath: "/data3"
+#    storageClass: local-storage
+#    size: "25Gi"
+resources: *resources
+#requests:
+#  memory: "256M"
+#  cpu: "1"
+#limits:
+#  memory: "4Gi"
+#  cpu: "2"
+# We usually recommend not to specify default resources and to leave this as a conscious
+# choice for the user. This also increases chances charts run on environments with little
+# resources, such as Minikube. If you do want to specify resources, uncomment the following
+# lines, adjust them as necessary, and remove the curly braces after 'resources:'.
+# limits:
+#   cpu: 100m
+#   memory: 128Mi
+# requests:
+#   cpu: 100m
+#   memory: 128Mi
+
+# for pvc allocation, we will support data tier : [hot, warm, cold, defaultReplica, default, host]
+# user can provide any of the given tier in sizing file
+persistence:
+  hot:
+    enabled: *hotEnabled
+    dataDirSize: *hotSize
+    storageClass: *hotStorageClass
+  warm:
+    enabled: *warmEnabled
+    dataDirSize: *warmSize
+    storageClass: *warmStorageClass
+  cold:
+    enabled: *coldEnabled
+    dataDirSize: *coldSize
+    storageClass: *coldStorageClass
+  defaultReplica:
+    enabled: *defaultReplicaEnabled
+    dataDirSize: *defaultReplicaSize
+    storageClass: *defaultReplicaStorageClass
+  default:
+    enabled: *defaultEnabled
+    dataDirSize: *defaultSize
+    storageClass: *defaultStorageClass
+  host:
+    dataDirSize: *hostSize
+  enabled: true
+  ## @param master.persistence.storageClass Persistent Volume Storage Class
+  ## If defined, storageClassName: <storageClass>
+  ## If set to "-", storageClassName: "", which disables dynamic provisioning
+  ## If undefined (the default) or set to null, no storageClassName spec is
+  ##   set, choosing the default provisioner.  (gp2 on AWS, standard on
+  ##   GKE, AWS & OpenStack)
+  ##
+  #storageClass: ""
+  ## @param master.persistence.existingClaim Existing Persistent Volume Claim
+  ## then accept the value as an existing Persistent Volume Claim to which
+  ## the container should be bound
+  ##
+  existingClaim: ""
+  ## @param master.persistence.existingVolume Existing Persistent Volume for use as volume match label selector to the `volumeClaimTemplate`. Ignored when `master.persistence.selector` is set.
+  ##
+  existingVolume: ""
+  ## @param master.persistence.selector Configure custom selector for existing Persistent Volume. Overwrites `master.persistence.existingVolume`
+  ## selector:
+  ##   matchLabels:
+  ##     volume:
+  ##
+  selector: {}
+  ## @param master.persistence.annotations Persistent Volume Claim annotations
+  ##
+  annotations: {}
+  ## @param master.persistence.accessModes Persistent Volume Access Modes
+  ##
+  accessModes:
+    - ReadWriteOnce
+  ## @param master.persistence.size Persistent Volume Size
+  ##
+  data:
+    storageClass: *defaultStorageClass
+    size: *defaultSize
+nodeSelector: {}
+tolerations: *tolerations
+affinity:
+  nodeAffinity: *nodeAffinity
+pvMapping:
+  "0":
+    nodeName: e2e-102-161
+    hostPath: /data1
+    size: 6Gi
+    storageClass: local-storage
+    dirPath: clickhouse-keeper
+    nodeIP: 216.48.185.161

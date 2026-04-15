@@ -1,0 +1,60 @@
+apiVersion: traefik.io/v1alpha1
+kind: IngressRoute
+metadata:
+  name: sitemanager-access
+  namespace: {{ template "traefik.namespace" $ }}
+spec:
+  entryPoints:
+  - websecure
+  routes:
+  - match: PathPrefix(`/vsm/api`)
+    kind: Rule
+    services:
+    - name: sitemanager
+      namespace: {{ template "traefik.namespace" $ }}
+      kind: Service
+      port: 8080
+      scheme: http
+  tls:
+    secretName: tls-cert
+    options:
+      name: dev
+---
+
+apiVersion: traefik.io/v1alpha1
+kind: IngressRoute
+metadata:
+  name: minio-tenant-access
+  namespace: {{ template "traefik.namespace" $ }}
+spec:
+  entryPoints:
+  - websecure
+  routes:
+  - match: PathPrefix(`/tenant`)
+    kind: Rule
+    services:
+    - name: minio-tenant
+      namespace: {{ template "traefik.namespace" $ }}
+      port: 9000
+      scheme: http
+    middlewares:
+      - name: minio-tenant-prefix
+  tls:
+    secretName: tls-cert
+    options:
+      name: dev
+---
+
+apiVersion: traefik.containo.us/v1alpha1
+kind: Middleware
+metadata:
+  name: minio-tenant-prefix
+  namespace: {{ template "traefik.namespace" $ }}
+spec:
+  stripPrefix:
+    prefixes:
+      - "/tenant"
+
+---
+
+

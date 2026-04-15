@@ -1,0 +1,185 @@
+{{- if .Capabilities.APIVersions.Has "apps/v1" }}
+apiVersion: apps/v1
+{{- else }}
+apiVersion: apps/v1beta2
+{{- end }}
+kind: Deployment
+metadata:
+  name: {{ template "cp-kafka-connect.fullname" . }}
+  labels:
+    organization: vunet
+    app: {{ template "cp-kafka-connect.name" . }}
+    chart: {{ template "cp-kafka-connect.chart" . }}
+    release: {{ .Release.Name }}
+    heritage: {{ .Release.Service }}
+spec:
+  replicas: {{ .Values.replicaCount }}
+  selector:
+    matchLabels:
+      organization: vunet
+      app: {{ template "cp-kafka-connect.name" . }}
+      release: {{ .Release.Name }}
+  template:
+    metadata:
+      labels:
+        organization: vunet
+        app: {{ template "cp-kafka-connect.name" . }}
+        release: {{ .Release.Name }}
+      {{- if or .Values.podAnnotations .Values.prometheus.jmx.enabled }}
+      annotations:
+      {{- range $key, $value := .Values.podAnnotations }}
+        {{ $key }}: {{ $value | quote }}
+      {{- end }}
+      {{- if .Values.prometheus.jmx.enabled }}
+        prometheus.io/scrape: "true"
+        prometheus.io/port: {{ .Values.prometheus.jmx.port | quote }}
+      {{- end }}
+      {{- end }}
+    spec:
+      serviceAccountName: {{ .Values.serviceAccount.name  }} 
+      automountServiceAccountToken: {{ .Values.serviceAccount.automountServiceAccountToken }}  #Disable SA token auto-mount    
+      {{- if .Values.podSecurityContext }}
+      securityContext: {{- toYaml .Values.podSecurityContext | nindent 8 }}
+      {{- end }}  
+      affinity:
+        {{- if .Values.affinity }}
+        nodeAffinity: {{- include "common.tplvalues.render" (dict "value" .Values.affinity "context" $) | nindent 10 }}
+        {{- end }}
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+          - weight: 1
+            podAffinityTerm:
+              labelSelector:
+                matchExpressions:
+                  - key: "app"
+                    operator: In
+                    values:
+                    - {{ template "cp-kafka-connect.name" . }}
+                  - key: "release"
+                    operator: In
+                    values:
+                    - {{ .Release.Name }}
+              topologyKey: "kubernetes.io/hostname"
+      initContainers:
+      - name: init-kafka-check
+        image: "{{ .Values.cp_kafka.repository }}/{{ .Values.cp_kafka.imageName }}:{{ .Values.cp_kafka.imageTag }}"
+        {{- if .Values.securityContext }}
+        securityContext: {{- toYaml .Values.securityContext | nindent 10 }}
+        {{- end }}
+        resources: {{- toYaml .Values.kubectlResources | nindent 10 }}
+        command:
+          - sh
+          - -c
+          - kafka-topics --bootstrap-server broker:9092 --list
+
+      containers:
+        {{- if .Values.prometheus.jmx.enabled }}
+        - name: prometheus-jmx-exporter
+          image: "{{ .Values.prometheus.jmx.image }}:{{ .Values.prometheus.jmx.imageTag }}"
+          imagePullPolicy: "{{ .Values.prometheus.jmx.imagePullPolicy }}"
+          {{- if .Values.securityContext }}
+          securityContext: {{- toYaml .Values.securityContext | nindent 12 }}
+          {{- end }}
+          command:
+          - java
+          - -XX:+UnlockExperimentalVMOptions
+          - -XX:+UseCGroupMemoryLimitForHeap
+          - -XX:MaxRAMFraction=1
+          - -XshowSettings:vm
+          - -jar
+          - jmx_prometheus_httpserver.jar
+          - {{ .Values.prometheus.jmx.port | quote }}
+          - /etc/jmx-kafka-connect/jmx-kafka-connect-prometheus.yml
+          ports:
+          - containerPort: {{ .Values.prometheus.jmx.port }}
+          resources:
+{{ toYaml .Values.prometheus.jmx.resources | indent 12 }}
+          volumeMounts:
+          - name: jmx-config
+            mountPath: /etc/jmx-kafka-connect
+        {{- end }}
+        - name: {{ template "cp-kafka-connect.name" . }}-server
+          image: "{{ .Values.cp_kafka.repository }}/{{ .Values.cp_kafka.imageName }}:{{ .Values.cp_kafka.imageTag }}"
+          imagePullPolicy: "{{ .Values.imagePullPolicy }}"
+          {{- if .Values.securityContext }}
+          securityContext: {{- toYaml .Values.securityContext | nindent 12 }}
+          {{- end }}
+          ports:
+            - name: kafka-connect
+              containerPort: {{ .Values.servicePort}}
+            {{- if .Values.hostmode.enabled }}
+              hostPort: {{ .Values.servicePort}}
+            {{- end }}
+              protocol: TCP
+            - name: jvm-agent
+              containerPort: {{ .Values.jvmPort}}
+              protocol: TCP
+            {{- if .Values.prometheus.jmx.enabled }}
+            - containerPort: {{ .Values.jmx.port }}
+              name: jmx
+            {{- end }}
+          resources:
+{{ toYaml .Values.resources | indent 12 }}
+          envFrom:
+          - secretRef:
+              name: kafka-connect-secret
+          env:
+            - name: CONNECT_REST_ADVERTISED_HOST_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: status.podIP
+            - name: CONNECT_BOOTSTRAP_SERVERS
+              value: {{ template "cp-kafka-connect.kafka.bootstrapServers" . }}
+            - name: CONNECT_GROUP_ID
+              value: vunet-connect
+            - name: CONNECT_CONFIG_STORAGE_TOPIC
+              value: vunet-connect-config
+            - name: CONNECT_OFFSET_STORAGE_TOPIC
+              value: vunet-connect-offsets
+            - name: CONNECT_STATUS_STORAGE_TOPIC
+              value: vunet-connect-status
+            - name: KAFKA_OPTS
+              value: '{{ .Values.options }}'
+            - name: KAFKA_HEAP_OPTS
+              value: "{{ .Values.heapOptions }}"
+            {{- range $key, $value := .Values.configurationOverrides }}
+            - name: {{ printf "CONNECT_%s" $key | replace "." "_" | upper | quote }}
+              value: {{ $value | quote }}
+            {{- end }}
+            {{- range $key, $value := .Values.customEnv }}
+            - name: {{ $key | quote }}
+              value: {{ $value | quote }}
+            {{- end }}
+            {{- if .Values.jmx.port }}
+            - name: KAFKA_JMX_PORT
+              value: "{{ .Values.jmx.port }}"
+            {{- end }}
+          {{- if .Values.livenessProbe }}
+          livenessProbe:
+{{ toYaml .Values.livenessProbe | trim | indent 12 }}
+          {{- end }}
+          {{- if .Values.volumeMounts }}
+          volumeMounts:
+{{ toYaml .Values.volumeMounts | indent 10 }}
+          {{- end}}
+      {{- if .Values.imagePullSecrets }}
+      imagePullSecrets:
+{{ toYaml .Values.imagePullSecrets | indent 8 }}
+      {{- end }}
+      volumes:
+      {{- if .Values.volumes }}
+{{ toYaml .Values.volumes | trim | indent 6 }}
+      {{- end}}
+      {{- if .Values.prometheus.jmx.enabled }}
+      - name: jmx-config
+        configMap:
+          name: {{ template "cp-kafka-connect.fullname" . }}-jmx-configmap
+      {{- end }}
+      {{- if .Values.nodeSelector }}
+      nodeSelector:
+{{ toYaml .Values.nodeSelector | indent 8 }}
+      {{- end }}
+      {{- if .Values.tolerations }}
+      tolerations:
+{{ toYaml .Values.tolerations | indent 8 }}
+      {{- end }}

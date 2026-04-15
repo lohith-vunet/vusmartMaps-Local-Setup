@@ -1,0 +1,38 @@
+# Set this to True if you want to run a light weight vuNode setup with lesser number
+# of celery worker processes
+# WARNING: DO NOT SET developer_mode to True IN PRODUCTION SETUPS
+developer_mode: False
+celery:
+    # All celery processes which are used by different proceses are defined here.
+    -
+        # Celery needed for network discovery process
+        name: discovery_queue
+        as_root: True
+        args: -A daq.services.scan.celery.discovery_task worker -Q discovery_queue --detach --loglevel=debug --pidfile="/tmp/celery.%n.discovery.pid" --logfile="/tmp/celery.%n.discovery.log" --autoscale=10,1
+        include_in_global_instance: False
+    -
+        # Celery needed for SNMP discovery process
+        name: snmp_queue
+        args: -A daq.services.scan.celery.snmp_task worker -Q snmp_queue --max-tasks-per-child=8 --concurrency=8 --detach --loglevel=error --pidfile="/tmp/celery.%n.snmp.pid" --logfile="/tmp/celery.%n.snmp.log"
+        # Set include_in_global_instance to False (default is True) if you want this celery not to be started as part of a global instance of
+        # celery processes
+        include_in_global_instance: False
+
+
+    -
+        # Celery needed to handle post network discovery operations
+        name: post_discovery_queue
+        # Note: For post_discovery_queue, concurrency value MUST be 1
+        args: -A daq.services.scan.celery.post_network_discovery_task worker -Q post_discovery_queue --detach --loglevel=error --pidfile="/tmp/celery.%n.post_discovery.pid" --logfile="/tmp/celery.%n.post_discovery.log" --concurrency=1
+        # Set include_in_global_instance to False (default is True) if you want this celery not to be started as part of a global instance of
+        # celery processes
+        include_in_global_instance: False
+
+nodes:
+    -
+        #for data collector vuNode
+        name: discovery
+        services:
+            -
+                # Network L2/L3 discovery
+                name: discovery

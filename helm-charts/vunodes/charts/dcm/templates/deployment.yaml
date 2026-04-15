@@ -1,0 +1,81 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: dcm
+  labels:
+    app: dcm
+    managedBy: vunet
+  {{- include "cairo.labels" . | nindent 4 }}
+spec:
+  replicas: {{ .Values.dcm.replicas }}
+  selector:
+    matchLabels:
+      app: dcm
+      managedBy: vunet
+      {{- include "cairo.labels" . | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        app: dcm
+        managedBy: vunet
+        {{- include "cairo.labels" . | nindent 8 }}
+    spec:
+      {{- with .Values.dcm.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      serviceAccountName: {{ .Values.serviceAccount.name  }}
+      automountServiceAccountToken: {{ .Values.serviceAccount.automountServiceAccountToken }}  #Disable SA token auto-mount
+      {{- with .Values.dcm.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- if .Values.securityContext }}
+      securityContext: {{- toYaml .Values.podSecurityContext | nindent 8 }}
+      {{- end }}
+      affinity:
+        podAntiAffinity: {{- include "common.affinities.pods" (dict "type" .Values.dcm.podAntiAffinityPreset "component" "grafana" "context" $) | nindent 10 }}
+
+        {{- with .Values.dcm.affinity.nodeAffinity }}
+        nodeAffinity:
+            {{- toYaml . | nindent 10 }}
+        {{- end }}
+      containers:
+      - name: dcm
+        args: {{- toYaml .Values.dcm.args | nindent 8 }}
+        env:
+        {{- if .Values.global.extraEnvVars }}
+        {{- include "common.tplvalues.render" (dict "value" .Values.global.extraEnvVars "context" $) | nindent 8 }}
+        {{- end }}
+        {{- if .Values.securityContext }}
+        securityContext: {{- toYaml .Values.securityContext | nindent 10 }}
+        {{- end }}
+        envFrom:
+        - configMapRef:
+            name: vuinterface-config
+        - secretRef:
+              name: vuinterface-secret
+        image: {{ .Values.dcm.repository }}/{{ .Values.dcm.name }}:{{ .Values.dcm.tag
+          | default .Chart.AppVersion }}
+        imagePullPolicy: {{ .Values.dcm.pullPolicy }}
+        workingDir: /home/vunet/workspace/cairo
+        {{- if .Values.dcm.resources }}
+        resources: {{- toYaml .Values.dcm.resources | nindent 12 }}
+        {{- end }}
+        ports:
+        volumeMounts:
+        - mountPath: /home/vunet/workspace/cairo/configs/vunode_config.yml
+          name: vunode-config
+          subPath: vunode_config.yml
+        - mountPath: /home/vunet/.aws/credentials
+          name: aws-env
+          subPath: credentials
+      hostname: vunode
+      volumes:
+      - configMap:
+          name: aws-secrets
+        name: aws-env
+      - configMap:
+          name: dcm-vunode-config
+        name: vunode-config
+

@@ -1,0 +1,142 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  annotations:
+    kompose.cmd: ./kompose convert -f keycloak.yaml
+    kompose.version: 1.28.0 (c4137012e)
+  labels:
+    organization: vunet
+    io.kompose.service: keycloak
+  name: {{ .Values.keycloakDeployment.name }}
+spec:
+  replicas: {{ .Values.keycloakDeployment.replicas }}
+  selector:
+    matchLabels:
+      organization: vunet
+      io.kompose.service: keycloak
+  strategy: {}
+  template:
+    metadata:
+      annotations:
+        kompose.cmd: ./kompose convert -f keycloak.yaml
+        kompose.version: 1.28.0 (c4137012e)
+        apparmor.security.beta.kubernetes.io/pod: runtime/default
+      labels:
+        organization: vunet
+        io.kompose.network/vunet-network: "true"
+        io.kompose.service: keycloak
+    spec:
+      {{- with .Values.keycloakContainer.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      serviceAccountName: {{ .Values.serviceAccount.name  }}
+      automountServiceAccountToken: {{ .Values.serviceAccount.automountServiceAccountToken }}  #Disable SA token auto-mount
+      hostname: keycloak
+      {{- if .Values.podSecurityContext }}
+      securityContext: {{- toYaml .Values.podSecurityContext | nindent 8 }}
+      {{- end }}
+      restartPolicy: Always
+      affinity:
+        nodeAffinity:
+          {{- toYaml .Values.nodeAffinity | nindent 10}}
+        podAntiAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            - labelSelector:
+                matchExpressions:
+                  - key: {{ .Values.podAntiAffinity.keyPlaceholder }}
+                    operator: In
+                    values:
+                      - {{ .Values.podAntiAffinity.valuePlaceholder }}
+              topologyKey: {{ .Values.podAntiAffinity.topologyKeyPlaceholder }}
+
+      tolerations:
+        {{- toYaml .Values.tolerations | nindent 8}}
+      containers:
+        - name: keycloak
+          args: ["start-dev", "--import-realm"]
+          {{- if .Values.securityContext }}
+          securityContext: {{- toYaml .Values.securityContext | nindent 12 }}
+          {{- end }}
+          env:
+            - name: KC_PROXY_HEADERS
+              value: xforwarded
+            - name: KC_DB
+              value: postgres
+            - name: KC_FEATURES
+              value: scripts
+            - name: KC_HOSTNAME_STRICT
+              value: "false"
+              # Note: If the keycloak admin console does not load after the upgrade try removing this environment variable
+            - name: KEYCLOAK_ADMIN_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: keycloak-secret
+                  key: KEYCLOAK_ADMIN_PASSWORD
+            - name: KC_DB_URL_HOST
+              value: {{ .Values.keycloakContainer.databaseHost }}
+            - name: KC_DB_URL_DATABASE
+              value: {{ .Values.keycloakContainer.databaseName }}
+            - name: KC_DB_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: keycloak-secret
+                  key: KEYCLOAK_DATABASE_PASSWORD
+            - name: KEYCLOAK_MANAGEMENT_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: keycloak-secret
+                  key: KEYCLOAK_MANAGEMENT_PASSWORD
+            - name: KC_DB_USERNAME
+              valueFrom:
+                secretKeyRef:
+                  name: keycloak-secret-spc
+                  key: KC_DB_USERNAME
+            - name: KEYCLOAK_ADMIN
+              valueFrom:
+                secretKeyRef:
+                  name: keycloak-secret-spc
+                  key: KEYCLOAK_ADMIN
+            - name: KEYCLOAK_MANAGEMENT_USER
+              valueFrom:
+                secretKeyRef:
+                  name: keycloak-secret-spc
+                  key: KEYCLOAK_MANAGEMENT_USER
+            - name: PASSWORD_PUBLIC_RSA_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: keycloak-secret-spc
+                  key: PASSWORD_PUBLIC_RSA_KEY
+            - name: PASSWORD_PRIVATE_RSA_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: keycloak-secret-spc
+                  key: PASSWORD_PRIVATE_RSA_KEY
+            - name: JAVA_OPTS_APPEND
+              value: -XX:MaxRAMPercentage=75 -XX:InitialRAMPercentage=50
+          image: "{{ .Values.keycloakContainer.repository }}/{{ .Values.keycloakContainer.name }}:{{ .Values.keycloakContainer.tag }}"
+          imagePullPolicy: {{ .Values.keycloakContainer.imagePullPolicy }}
+          {{- if .Values.resources }}
+          resources: {{- toYaml .Values.resources | nindent 12 }}
+          {{- end }}
+          ports:
+            - name: health
+              containerPort: 9000
+            - containerPort: {{ .Values.keycloakContainer.ports.containerPort }}
+              name: keycloak
+          # https://kubernetes.io/docs/tasks/configure-pod-container/configure-liveness-readiness-startup-probes/#configure-probes
+          livenessProbe:
+            httpGet:
+              path: /health/live
+              port: 9000
+            initialDelaySeconds: 120
+            periodSeconds: 30
+            timeoutSeconds: 10
+          readinessProbe:
+            httpGet:
+              path: /health/ready
+              port: 9000
+            initialDelaySeconds: 120
+            periodSeconds: 30
+            timeoutSeconds: 10
+

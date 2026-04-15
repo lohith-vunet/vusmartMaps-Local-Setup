@@ -1,0 +1,19 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ .Values.service.name }}
+  labels:
+    {{- include "orchestration.labels" . | nindent 4 }}
+spec:
+  type: {{ .Values.service.type }}
+  ports:
+    - port: {{ .Values.service.webhook.port }}
+      targetPort: {{ .Values.service.webhook.port }}
+      protocol: TCP
+      name: webhook
+    - port: {{ .Values.service.api.port }}
+      targetPort: {{ .Values.service.api.port }}
+      protocol: TCP
+      name: api
+  selector:
+    {{- include "orchestration.selectorLabels" . | nindent 8 }}

@@ -1,0 +1,19 @@
+---
+apiVersion: v1
+data:
+  alert-vunode.yml: |-
+    # of celery worker processes 
+    # WARNING: DO NOT SET developer_mode to True IN PRODUCTION SETUPS
+    developer_mode: True
+    nodes:
+    {{- $replicas := add .Values.alert.replicas 1 }}
+    {{- range $idx, $v:= untilStep 1  (int $replicas ) 1 }}
+    {{- range $line :=  $.Files.Lines "alert-vunode.yml" }}
+    {{ $line | replace "idx" ( printf "%d" $v ) }}
+    {{- end }}
+    {{- end}}
+
+kind: ConfigMap
+metadata:
+  creationTimestamp: null
+  name: alert-vunode-config

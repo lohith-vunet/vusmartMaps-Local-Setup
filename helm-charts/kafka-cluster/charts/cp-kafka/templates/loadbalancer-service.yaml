@@ -1,0 +1,40 @@
+{{- if .Values.loadbalancer.enabled }}
+  {{- $fullName := include "cp-kafka.fullname" . }}
+  {{- $brokers := .Values.brokers | int }}
+  {{- $servicePort := .Values.loadbalancer.servicePort }}
+  {{- $root := . }}
+  {{- range $i, $e := until $brokers }}
+    {{- $responsiblePod := printf "%s-%d" (printf "%s" $fullName) $i }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+{{- if eq $root.Values.env "aws" }}
+  annotations:
+    service.beta.kubernetes.io/aws-load-balancer-eip-allocations: {{ index $root.Values.annotations.loadBalancerEIPID $i | quote }}
+    service.beta.kubernetes.io/aws-load-balancer-subnets: {{ index $root.Values.annotations.loadBalancerSubnetID $i | quote }}
+    service.beta.kubernetes.io/aws-load-balancer-type: nlb
+{{- end }}
+  name: {{ template "cp-kafka.fullname" $root }}-{{ $i }}-loadbalancer
+  labels:
+    app: {{ include "cp-kafka.name" $root }}
+    chart: {{ template "cp-kafka.chart" $root }}
+    release: {{ $root.Release.Name }}
+    heritage: {{ $root.Release.Service }}
+    pod: {{ $responsiblePod }}
+spec:
+  type: LoadBalancer
+{{- if eq $root.Values.env "" }}
+  loadBalancerIP: {{ index $root.Values.loadbalancer.loadBalancerIP $i }}
+{{- end }}
+  ports:
+    - name: external-broker
+      port: {{ $servicePort }}
+      targetPort: {{ $servicePort }}
+      protocol: TCP
+  selector:
+    app: {{ include "cp-kafka.name" $root }}
+    release: {{ $root.Release.Name }}
+    statefulset.kubernetes.io/pod-name: {{ $responsiblePod | quote }}
+  {{- end }}
+{{- end }}

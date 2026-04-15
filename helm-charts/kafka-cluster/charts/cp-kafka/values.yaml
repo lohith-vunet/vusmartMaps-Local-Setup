@@ -1,0 +1,321 @@
+# vulauncher will update this section while deployment
+vunet:
+  imageServer: &imageServer ghcr.io
+  imageName: &imageName vunetsystems/cp-kafka
+  imageTag: &imageTag 7.4.3
+  # cpu and memory min and max values
+  resources: &resources
+    limits:
+      cpu: "0.75"
+      memory: 2Gi
+    requests:
+      cpu: "0.3"
+      memory: 500Mi
+  # priority node labels
+  nodeAffinity: &nodeAffinity {}
+  # tolerations
+  tolerations: &tolerations []
+  # number of pods to run
+  replicas: &replicas 1
+  # pvc size that will be claimed. For kafka brokers we will use default section. All others
+  # will be zero value
+  hot:
+    size: &hotSize ""
+    enabled: &hotEnabled false
+    encrypted: &hotEncrypted false
+    storageclass: &hotStorageClass ""
+  warm:
+    size: &warmSize ""
+    enabled: &warmEnabled false
+    encrypted: &warmEncrypted false
+    storageclass: &warmStorageClass ""
+  cold:
+    size: &coldSize ""
+    enabled: &coldEnabled false
+    encrypted: &coldEncrypted false
+    storageclass: &coldStorageClass ""
+  default:
+    size: &defaultSize ""
+    enabled: &defaultEnabled false
+    encrypted: &defaultEncrypted false
+    storageclass: &defaultStorageClass ""
+  default-replica:
+    size: &defaultReplicaSize ""
+    enabled: &defaultReplicaEnabled false
+    encrypted: &defaultReplicaEncrypted false
+    storageclass: &defaultReplicaStorageClass ""
+  host:
+    size: &hostSize 5Gi
+  # ghcr credentials
+  pullSecretName: &pullSecretName ghcr-login-secret
+  # loadbalancer IP information
+  loadbalancer: &loadbalancer []
+  # Default values for cp-kafka.
+# This is a YAML-formatted file.
+# Declare variables to be passed into your templates.
+
+## ------------------------------------------------------
+## Kafka
+## ------------------------------------------------------
+
+## Number of Kafka brokers
+brokers: *replicas
+ssl:
+  enabled: true
+  protocol: SSL # Set this to EXTERNAL when disabling SSL
+  configurationOverrides:
+    ssl.client.auth: none
+    security.protocol: SSL
+    ssl.truststore.filename: truststore.jks
+    ssl.keystore.filename: keystore.jks
+    ssl.key.credentials: cert_creds
+    ssl.truststore.credentials: cert_creds
+    ssl.keystore.credentials: cert_creds
+configurationOverrides:
+  auto.create.topics.enable: false
+  listener.security.protocol.map: PLAINTEXT:PLAINTEXT,EXTERNAL:PLAINTEXT,SSL:SSL
+  log.retention.hours: 1
+  opts: -javaagent:/home/appuser/jolokia/jolokia-jvm-agent.jar=host=0.0.0.0
+#environment - as of now we only need this for aws
+#supported values - aws
+env: ""
+annotations:
+  loadBalancerEIPID: ["eipalloc-001d0f952f30de654", "eipalloc-0c8a495116a2c2cb9", "eipalloc-005ea182e411d3774"]
+  loadBalancerSubnetID: ["subnet-0249b2199808fe833", "subnet-0f6b252467b0f6a20", "subnet-077bbc0a2bb04d04a"]
+## Image Info
+## ref: https://hub.docker.com/r/confluentinc/cp-server/
+repository: *imageServer
+name: *imageName
+imageTag: *imageTag
+## Specify a imagePullPolicy
+## ref: http://kubernetes.io/docs/user-guide/images/#pre-pulling-images
+imagePullPolicy: IfNotPresent
+## Specify an array of imagePullSecrets.
+## Secrets must be manually created in the namespace.
+## ref: https://kubernetes.io/docs/concepts/containers/images/#specifying-imagepullsecrets-on-a-pod
+imagePullSecrets:
+  - name: *pullSecretName
+## StatefulSet Config
+## Start and stop pods in Parallel or OrderedReady (one-by-one.)
+## ref: https://kubernetes.io/docs/tutorials/stateful-application/basic-stateful-set/#pod-management-policy
+podManagementPolicy: OrderedReady
+## The StatefulSet Update Strategy which Kafka will use when changes are applied: OnDelete or RollingUpdate
+## ref: https://kubernetes.io/docs/concepts/workloads/controllers/statefulset/#update-strategies
+updateStrategy: RollingUpdate
+# Security Context
+# ref: https://kubernetes.io/docs/tasks/configure-pod-container/security-context/
+# for Kafka container
+securityContext:
+  privileged: false
+  allowPrivilegeEscalation: false # Prevent privilege escalation
+  capabilities:
+    drop: ["ALL"]
+  readOnlyRootFilesystem: true
+  runAsNonRoot: true
+  seccompProfile:
+    type: RuntimeDefault
+podSecurityContext:
+  fsGroup: 1000
+  runAsUser: 1000
+  runAsGroup: 1000
+  runAsNonRoot: true
+  seccompProfile:
+    type: RuntimeDefault
+serviceAccount:
+  create: true
+  name: cp-kafka
+  automountServiceAccountToken: false
+kubectlResources:
+  requests:
+    cpu: "50m"
+    memory: "100Mi"
+  limits:
+    cpu: "100m"
+    memory: "200Mi"
+timezone: "Asia/Kolkata"
+hostmode:
+  enabled: true
+#localStorage Class pvMapping, It will come from sizing file
+#pvMapping:
+#  "0": 
+#    nodeName: "node1" # replica-1 
+#    hostPath: "/data1"
+#    storageClass: local-storage
+#    size: "10Gi"
+#  "1": 
+#    nodeName: "node2" # replica-2 
+#    hostPath: "/data2"
+#    storageClass: local-storage
+#    size: "10Gi"
+#  "2": 
+#    nodeName: "node3" # replica-3
+#    hostPath: "/data3"
+#    storageClass: local-storage
+#    size: "10Gi"
+externalServicePort: 9094
+useExternalIP: false
+## Kafka Server properties
+## ref: https://kafka.apache.org/documentation/#configuration
+#configurationOverrides:
+#"offsets.topic.replication.factor": "1"
+#"default.replication.factor": 1
+#  "opts": "-javaagent:/home/appuser/jolokia/jolokia-jvm-agent.jar=host=0.0.0.0"
+# "min.insync.replicas": 2
+#  "auto.create.topics.enable": false
+#  "log.retention.hours": 1
+
+## Options required for external access via NodePort
+## ref:
+## - http://kafka.apache.org/documentation/#security_configbroker
+## - https://cwiki.apache.org/confluence/display/KAFKA/KIP-103%3A+Separation+of+Internal+and+External+traffic
+##
+## Advertised listeners will use the firstListenerPort value as it's default unless overridden here.
+## Setting "advertised.listeners" here appends to "PLAINTEXT://${POD_IP}:9092,"
+#"advertised.listeners": |-
+# EXTERNAL://${HOST_IP}:$((31090 + ${KAFKA_BROKER_ID}))
+#  "listener.security.protocol.map": |-
+#   PLAINTEXT:PLAINTEXT,EXTERNAL:PLAINTEXT
+
+## Additional env variables
+customEnv:
+  LOAD_BALANCER_IP: ""
+  # KAFKA_METRIC_REPORTERS: "io.confluent.metrics.reporter.ConfluentMetricsReporter"
+  # CONFLUENT_METRICS_REPORTER_BOOTSTRAP_SERVERS: "localhost:9092"
+  # Set the below in the following format "<ip1>,<ip2>,<ip3>" when
+  # useExternalIP is set to True.
+  EXTERNAL_IP: "" # Set this in the following format "<ip1>,<ip2>,<ip3>"
+  KAFKA_JMX_OPTS: " " # Disable the JMX remote monitoring and management
+secrets:
+  enabled: false
+persistence:
+  hot:
+    enabled: *hotEnabled
+    dataDirSize: *hotSize
+    storageClass: *hotStorageClass
+  warm:
+    enabled: *warmEnabled
+    dataDirSize: *warmSize
+    storageClass: *warmStorageClass
+  cold:
+    enabled: *coldEnabled
+    dataDirSize: *coldSize
+    storageClass: *coldStorageClass
+  defaultReplica:
+    enabled: *defaultReplicaEnabled
+    dataDirSize: *defaultReplicaSize
+    storageClass: *defaultReplicaStorageClass
+  default:
+    enabled: *defaultEnabled
+    dataDirSize: *defaultSize
+    storageClass: *defaultStorageClass
+  host:
+    dataDirSize: *hostSize
+  enabled: true
+  ## The size of the PersistentVolume to allocate to each Kafka Pod in the StatefulSet. For
+  ## production servers this number should likely be much larger.
+  size: *defaultSize
+  ## Kafka data Persistent Volume Storage Class
+  ## If defined, storageClassName: <storageClass>
+  ## If set to "-", storageClassName: "", which disables dynamic provisioning
+  ## If undefined (the default) or set to null, no storageClassName spec is
+  ##   set, choosing the default provisioner.  (gp2 on AWS, standard on
+  ##   GKE, AWS & OpenStack)
+  ##
+  # storageClass: ""
+
+  disksPerBroker: 1
+  #secretsDir size to be used if secrets are enabled
+  secretsDirSize: 100M
+  # secretsDirStorageClass: ""
+## Kafka JVM Heap Option
+heapOptions: "-Xms512M -Xmx512M"
+resources: *resources
+# We usually recommend not to specify default resources and to leave this as a conscious
+# choice for the user. This also increases chances charts run on environments with little
+# resources, such as Minikube. If you do want to specify resources, uncomment the following
+# lines, adjust them as necessary, and remove the curly braces after 'resources:'.
+# limits:
+#  cpu: 100m
+#  memory: 128Mi
+# requests:
+#  cpu: 100m
+#  memory: 128Mi
+
+## Custom pod annotations
+podAnnotations:
+  apparmor.security.beta.kubernetes.io/pod: runtime/default
+## Node labels for pod assignment
+## Ref: https://kubernetes.io/docs/concepts/configuration/assign-pod-node/
+nodeSelector: {}
+## Taints to tolerate on node assignment:
+## Ref: https://kubernetes.io/docs/concepts/configuration/taint-and-toleration/
+tolerations: *tolerations
+## Pod scheduling constraints
+## Ref: https://kubernetes.io/docs/concepts/scheduling-eviction/assign-pod-node/#affinity-and-anti-affinity
+nodeAffinityPreset:
+## @param nodeAffinityPreset.type Node affinity preset type. Ignored if `affinity` is set. Allowed values: `soft` or `hard`
+##
+# type: hard
+## @param nodeAffinityPreset.key Node label key to match Ignored if `affinity` is set.
+## E.g.
+## key: "kubernetes.io/e2e-az-name"
+##
+# key: "broker"
+## @param nodeAffinityPreset.values Node label values to match. Ignored if `affinity` is set.
+## E.g.
+## values:
+##   - e2e-az1
+##   - e2e-az2
+##
+# values: ["True"]
+affinity:
+  nodeAffinity: *nodeAffinity
+## Monitoring
+## Kafka JMX Settings
+## ref: https://docs.confluent.io/current/kafka/monitoring.html
+jmx:
+  port:
+## Prometheus Exporter Configuration
+## ref: https://prometheus.io/docs/instrumenting/exporters/
+prometheus:
+  ## JMX Exporter Configuration
+  ## ref: https://github.com/prometheus/jmx_exporter
+  jmx:
+    enabled: false
+    image: solsson/kafka-prometheus-jmx-exporter@sha256
+    imageTag: 6f82e2b0464f50da8104acd7363fb9b995001ddff77d248379f8788e78946143
+    imagePullPolicy: IfNotPresent
+    port: 5556
+    ## Resources configuration for the JMX exporter container.
+    ## See the `resources` documentation above for details.
+    resources: {}
+loadbalancer:
+  enabled: false
+  servicePort: 31094
+  loadBalancerIP: []
+nodeport:
+  enabled: false
+  servicePort: 19092
+  firstListenerPort: 31090
+## ------------------------------------------------------
+## Zookeeper
+## ------------------------------------------------------
+cp-zookeeper:
+  ## If true, install the cp-zookeeper chart alongside cp-kafka
+  ## ref: ../cp-zookeeper
+  enabled: true
+  servers: 3
+  persistence:
+    enabled: true
+    dataDirSize: 50Gi
+    dataLogDirSize: 5Gi
+  ## If the Zookeeper Chart is disabled a URL and port are required to connect
+  url: ""
+pvMapping:
+  "0":
+    nodeName: e2e-102-161
+    hostPath: /data1
+    size: 12Gi
+    storageClass: local-storage
+    dirPath: kafka_dir
+    nodeIP: 216.48.185.161

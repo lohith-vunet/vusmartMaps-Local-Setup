@@ -1,0 +1,372 @@
+{{- if .Capabilities.APIVersions.Has "apps/v1" }}
+apiVersion: apps/v1
+{{- else }}
+apiVersion: apps/v1beta1
+{{- end }}
+kind: StatefulSet
+metadata:
+  name: {{ template "cp-kafka.fullname" . }}
+  labels:
+    organization: vunet
+    app: {{ template "cp-kafka.name" . }}
+    chart: {{ template "cp-kafka.chart" . }}
+    release: {{ .Release.Name }}
+    heritage: {{ .Release.Service }}
+spec:
+  {{- if .Capabilities.APIVersions.Has "apps/v1" }}
+  selector:
+    matchLabels:
+      organization: vunet
+      app: {{ template "cp-kafka.name" . }}
+      release: {{ .Release.Name }}
+  {{- end }}
+  serviceName: broker-headless
+  podManagementPolicy: {{ .Values.podManagementPolicy }}
+  replicas: {{ default 3 .Values.brokers }}
+  updateStrategy:
+    type: {{ .Values.updateStrategy }}
+  template:
+    metadata:
+      labels:
+        organization: vunet
+        app: {{ template "cp-kafka.name" . }}
+        release: {{ .Release.Name }}
+      {{- if or .Values.podAnnotations .Values.prometheus.jmx.enabled }}
+      annotations:
+      {{- range $key, $value := .Values.podAnnotations }}
+        {{ $key }}: {{ $value | quote }}
+      {{- end }}
+      {{- if .Values.prometheus.jmx.enabled }}
+        prometheus.io/scrape: "true"
+        prometheus.io/port: {{ .Values.prometheus.jmx.port | quote }}
+      {{- end }}
+      {{- end }}
+    spec:
+      {{- if .Values.securityContext }}
+      securityContext: {{- toYaml .Values.podSecurityContext | nindent 8 }}
+      {{- end }}
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      serviceAccountName: {{ .Values.serviceAccount.name  }}
+      automountServiceAccountToken: {{ .Values.serviceAccount.automountServiceAccountToken }} #Disable SA token auto-mount
+      affinity:
+        {{- if .Values.affinity }}
+        {{- include "common.tplvalues.render" (dict "value" .Values.affinity "context" $) | nindent 8 }}
+        {{- else }}
+        nodeAffinity: {{- include "common.affinities.nodes" (dict "type" .Values.nodeAffinityPreset.type "key" .Values.nodeAffinityPreset.key "values" .Values.nodeAffinityPreset.values) | nindent 10 }}
+        {{- end }}
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+          - weight: 1
+            podAffinityTerm:
+              labelSelector:
+                matchExpressions:
+                  - key: "app"
+                    operator: In
+                    values:
+                    - {{ template "cp-kafka.name" . }}
+                  - key: "release"
+                    operator: In
+                    values:
+                    - {{ .Release.Name }}
+              topologyKey: "kubernetes.io/hostname"
+      containers:
+      {{- if .Values.prometheus.jmx.enabled }}
+      - name: prometheus-jmx-exporter
+        image: "{{ .Values.prometheus.jmx.image }}:{{ .Values.prometheus.jmx.imageTag }}"
+        imagePullPolicy: "{{ .Values.prometheus.jmx.imagePullPolicy }}"
+        {{- if .Values.securityContext }}
+        securityContext: {{- toYaml .Values.securityContext | nindent 10 }}
+        {{- end }}
+        command:
+        - java
+        - -XX:+UnlockExperimentalVMOptions
+        - -XX:+UseCGroupMemoryLimitForHeap
+        - -XX:MaxRAMFraction=1
+        - -XshowSettings:vm
+        - -jar
+        - jmx_prometheus_httpserver.jar
+        - {{ .Values.prometheus.jmx.port | quote }}
+        - /etc/jmx-kafka/jmx-kafka-prometheus.yml
+        ports:
+        - containerPort: {{ .Values.prometheus.jmx.port }}
+        resources:
+{{ toYaml .Values.prometheus.jmx.resources | indent 10 }}
+        volumeMounts:
+        - name: jmx-config
+          mountPath: /etc/jmx-kafka
+      {{- end }}
+      - name: {{ template "cp-kafka.name" . }}-broker
+        image: "{{ .Values.repository }}/{{ .Values.name }}:{{ .Values.imageTag }}"
+        imagePullPolicy: "{{ .Values.imagePullPolicy }}"
+        {{- if .Values.securityContext }}
+        securityContext: {{- toYaml .Values.securityContext | nindent 10 }}
+        {{- end }}
+        ports:
+        - containerPort: 8778
+          name: jmx
+        - containerPort: 9092
+          name: kafka
+        {{- if .Values.hostmode.enabled }}
+          {{- if eq (int .Values.externalServicePort) 9092 }}
+          hostPort: 9092
+          {{- end }}
+        {{- end }}
+        {{- if ne (int .Values.externalServicePort) 9092 }}
+        - containerPort: {{ .Values.externalServicePort }}
+          {{- if .Values.hostmode.enabled }}
+          hostPort: {{ .Values.externalServicePort }}
+          {{- end }}
+          {{- if .Values.ssl.enabled }}
+          name: kafka-ssl
+          {{- else }}
+          name: external
+          {{- end }}
+        {{- end }}
+
+        {{- if .Values.prometheus.jmx.enabled }}
+        - containerPort: {{ .Values.jmx.port }}
+          name: jmx
+        {{- end }}
+        {{- if .Values.nodeport.enabled }}
+          {{- $brokers := .Values.brokers | int }}
+          {{- $root := . }}
+          {{- range $i, $e := until $brokers }}
+        - containerPort: {{ add $root.Values.nodeport.firstListenerPort $i }}
+          name: nodeport-{{ $i }}
+          {{- end }}
+        {{- end }}
+        resources:
+{{ toYaml .Values.resources | indent 10 }}
+        lifecycle:
+            postStart:
+              exec:
+                command: ["/bin/sh", "-c", "if [ -d /var/lib/kafka/data/lost+found ]; then rm -rf /var/lib/kafka/data/lost+found; fi"]
+
+        env:
+        - name: KAFKA_TOPIC
+          value: "notification alarm product-engagement diagnostics  dcm-stats"
+        - name: POD_IP
+          valueFrom:
+            fieldRef:
+              fieldPath: status.podIP
+        - name: HOST_IP
+          valueFrom:
+            fieldRef:
+              fieldPath: status.hostIP
+        - name: POD_NAME
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.name
+        - name: POD_NAMESPACE
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.namespace
+        - name: KAFKA_HEAP_OPTS
+          value: {{ .Values.heapOptions }}
+        - name: KAFKA_ZOOKEEPER_CONNECT
+          value: {{ include "cp-kafka.cp-zookeeper.service-name" . | quote }}
+        {{- if  le (int .Values.brokers) 2 }}
+        - name: KAFKA_DEFAULT_REPLICATION_FACTOR
+          value: {{ default 1 | quote }}
+        - name: KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR
+          value: {{ default 1 |  quote }}
+        {{- else}}
+        - name: KAFKA_DEFAULT_REPLICATION_FACTOR
+          value: {{ default 2 | quote }}
+        - name: KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR
+          value: {{ default 2 |  quote }}
+        {{ end }}
+            #- name: KAFKA_LOG_DIRS
+            #value: {{ include "cp-kafka.log.dirs" . | quote }}
+            #- name: KAFKA_METRIC_REPORTERS
+            #value: "io.confluent.metrics.reporter.ConfluentMetricsReporter"
+            #- name: CONFLUENT_METRICS_REPORTER_BOOTSTRAP_SERVERS
+            #value: {{ printf "PLAINTEXT://%s:9092" (include "cp-kafka.cp-kafka-headless.fullname" .) | quote }}
+        {{- range $key, $value := .Values.configurationOverrides }}
+        - name: {{ printf "KAFKA_%s" $key | replace "." "_" | upper |  }}
+          value: {{ $value | quote }}
+        {{- end }}
+        {{- if .Values.ssl.enabled }}
+        {{- range $key, $value := .Values.ssl.configurationOverrides }}
+        - name: {{ printf "KAFKA_%s" $key | replace "." "_" | upper |  }}
+          value: {{ $value | quote }}
+        {{- end }}
+        {{- end }}
+
+        {{- range $key, $value := .Values.customEnv }}
+        - name: {{ $key | quote }}
+          value: {{ $value | quote }}
+        {{- end }}
+        {{- if .Values.jmx.port }}
+        - name: KAFKA_JMX_PORT
+          value: "{{ .Values.jmx.port }}"
+        {{- end }}
+        - name: TZ
+          value: "{{ .Values.timezone }}"
+        - name: VUNET_DOCKER_HOST
+          valueFrom:
+            fieldRef:
+              fieldPath: spec.nodeName
+        # This is required because the Downward API does not yet support identification of
+        # pod numbering in statefulsets. Thus, we are required to specify a command which
+        # allows us to extract the pod ID for usage as the Kafka Broker ID.
+        # See: https://github.com/kubernetes/kubernetes/issues/31218
+        command:
+        - sh
+        - -exc
+      {{- if .Values.loadbalancer.enabled }}
+        - |
+          export KAFKA_BROKER_ID=${HOSTNAME##*-} && \
+          IFS=',' LOAD_BALANCER_IP_ARR=($LOAD_BALANCER_IP) && \
+        {{- if eq (int .Values.externalServicePort) 9092 }}
+          export KAFKA_ADVERTISED_LISTENERS=PLAINTEXT://${LOAD_BALANCER_IP_ARR[${KAFKA_BROKER_ID}]}:9092 && \
+        {{- else }}
+          export KAFKA_ADVERTISED_LISTENERS=PLAINTEXT://${POD_NAME}.broker-headless.${POD_NAMESPACE}:9092,{{ .Values.ssl.protocol }}://${LOAD_BALANCER_IP_ARR[${KAFKA_BROKER_ID}]}:{{ .Values.externalServicePort }} && \
+        {{- end }}
+          exec /etc/confluent/docker/run
+      {{- else if .Values.useExternalIP }}
+        - |
+          export KAFKA_BROKER_ID=${HOSTNAME##*-} && \
+          IFS=',' EXTERNAL_IP_ARR=($EXTERNAL_IP) && \
+        {{- if eq (int .Values.externalServicePort) 9092 }}
+          export KAFKA_ADVERTISED_LISTENERS=PLAINTEXT://${EXTERNAL_IP_ARR[${KAFKA_BROKER_ID}]}:9092 && \
+        {{- else }}
+          export KAFKA_ADVERTISED_LISTENERS=PLAINTEXT://${POD_NAME}.broker-headless.${POD_NAMESPACE}:9092,{{ .Values.ssl.protocol }}://${EXTERNAL_IP_ARR[${KAFKA_BROKER_ID}]}:{{ .Values.externalServicePort }} && \
+        {{- end }}
+          exec /etc/confluent/docker/run
+      {{- else if .Values.hostmode.enabled }}
+        - |
+          export KAFKA_BROKER_ID=${HOSTNAME##*-} && \
+        {{- if eq (int .Values.externalServicePort) 9092 }}
+          export KAFKA_ADVERTISED_LISTENERS=PLAINTEXT://${HOST_IP}:9092 && \
+        {{- else }}
+          export KAFKA_ADVERTISED_LISTENERS=PLAINTEXT://${POD_NAME}.broker-headless.${POD_NAMESPACE}:9092,{{ .Values.ssl.protocol }}://${HOST_IP}:{{ .Values.externalServicePort }} && \
+        {{- end }}
+          exec /etc/confluent/docker/run
+      {{- else }}
+        - |
+          export KAFKA_BROKER_ID=${HOSTNAME##*-} && \
+          export KAFKA_ADVERTISED_LISTENERS=PLAINTEXT://${POD_NAME}.broker-headless.${POD_NAMESPACE}:9092{{ include "cp-kafka.configuration.advertised.listeners" . }} && \
+          exec /etc/confluent/docker/run
+      {{- end }}
+        volumeMounts:
+        {{- if .Values.secrets.enabled }}
+          - name: secretsdir
+            mountPath: /etc/kafka/secrets
+        {{- end }}
+
+        {{- if .Values.ssl.enabled }}
+          - name: kafkassl-store
+            mountPath: /etc/kafka/secrets
+        {{- end }}
+
+        {{- if .Values.persistence.enabled }}
+          {{- $disksPerBroker := .Values.persistence.disksPerBroker | int }}
+          {{- range $k, $e := until $disksPerBroker }}
+          - name: datadir-{{$k}}
+            mountPath: /var/lib/kafka/data
+          {{- end }}
+        {{- end }}
+      {{- if .Values.securityContext.readOnlyRootFilesystem }}
+          - name: kafka-config
+            mountPath: /etc/kafka/
+          - name: kafka-logs
+            mountPath: /var/log/kafka
+      {{- end }}
+      {{- if not .Values.persistence.enabled }}
+      - name: datadir-0
+        emptyDir: {}
+      {{- end }}
+      {{- if .Values.prometheus.jmx.enabled }}
+      - name: jmx-config
+        configMap:
+          name: {{ template "cp-kafka.fullname" . }}-jmx-configmap
+      {{- end }}
+      {{- if .Values.nodeSelector }}
+      nodeSelector:
+{{ toYaml .Values.nodeSelector | indent 8 }}
+      {{- end }}
+      {{- if .Values.tolerations }}
+      tolerations:
+{{ toYaml .Values.tolerations | indent 8 }}
+      {{- end }}
+      volumes:
+    {{- if .Values.ssl.enabled }}
+      - name: kafkassl-store
+        secret:
+          secretName: kafka-ssl-store
+    {{- end }}
+    {{- if .Values.securityContext.readOnlyRootFilesystem }}
+      - name: kafka-config
+        emptyDir: {}
+      - name: kafka-logs
+        emptyDir: {}
+    {{- end }}
+   {{- if .Values.persistence.enabled }}
+  volumeClaimTemplates:
+  {{- if .Values.secrets.enabled }}
+  - metadata:
+      name: secretsdir
+    spec:
+      accessModes: [ "ReadWriteOnce" ]
+      resources:
+        requests:
+          storage: "{{ .Values.persistence.secretsDirSize }}"
+      {{- if .Values.persistence.secretsDirStorageClass }}
+      {{- if (eq "-" .Values.persistence.secretsDirStorageClass) }}
+      storageClassName: ""
+      {{- else }}
+      storageClassName: "{{ .Values.persistence.secretsDirStorageClass }}"
+      {{- end }}
+      {{- end }}
+  {{- end }}
+  {{- $disksPerBroker := .Values.persistence.disksPerBroker | int }}
+  {{- $root := . }}
+  {{- range $k, $e := until $disksPerBroker }}
+  - metadata:
+      name: datadir-{{$k}}
+    spec:
+      accessModes: [ "ReadWriteOnce" ]
+      resources:
+        requests:
+            {{- if $.Values.pvMapping }}
+            storage: "{{ $root.Values.persistence.host.dataDirSize }}"
+            {{- else if $root.Values.persistence.default.enabled }}
+            storage: "{{ $root.Values.persistence.default.dataDirSize }}"
+            {{- else if $root.Values.persistence.defaultReplica.enabled }}
+            storage: "{{ $root.Values.persistence.defaultReplica.dataDirSize }}"
+            {{- else if $root.Values.persistence.hot.enabled }}
+            storage: "{{ $root.Values.persistence.hot.dataDirSize }}"
+            {{- else if $root.Values.persistence.warm.enabled }}
+            storage: "{{ $root.Values.persistence.warm.dataDirSize }}"
+            {{- else if $root.Values.persistence.cold.enabled }}
+            storage: "{{ $root.Values.persistence.cold.dataDirSize }}"
+            {{- else if $root.Values.persistence.host.enabled }}
+            storage: "{{ $root.Values.persistence.host.dataDirSize }}"
+            {{- end }}
+      
+      {{- if $.Values.pvMapping }}
+      storageClassName: local-storage
+      {{- else if $root.Values.persistence.default.enabled }}
+      storageClassName: "{{ $root.Values.persistence.default.storageClass }}"
+      {{- else if $root.Values.persistence.defaultReplica.enabled }}
+      storageClassName: "{{ $root.Values.persistence.defaultReplica.storageClass }}"
+      {{- else if $root.Values.persistence.hot.enabled }}
+      storageClassName: "{{ $root.Values.persistence.hot.storageClass }}"
+      {{- else if $root.Values.persistence.warm.enabled }}
+      storageClassName: "{{ $root.Values.persistence.warm.storageClass }}"
+      {{- else if $root.Values.persistence.cold.enabled }}
+      storageClassName: "{{ $root.Values.persistence.cold.storageClass }}"
+      {{- else if $root.Values.persistence.host.enabled }}
+      storageClassName: "{{ $root.Values.persistence.host.storageClass }}"
+      {{- else if $root.Values.persistence.data.storageClass }}
+      storageClassName: "{{ $root.Values.persistence.data.storageClass }}"
+      {{- else }}
+      storageClassName: ""
+      {{- end }}
+
+{{- end }}
+{{- end }}

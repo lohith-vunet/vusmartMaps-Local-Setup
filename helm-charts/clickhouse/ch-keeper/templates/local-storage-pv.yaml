@@ -1,0 +1,33 @@
+{{- if .Values.pvMapping }}
+{{- $namespace := .Release.Namespace }}
+{{range $i, $e := .Values.pvMapping}} # list of nodeNames comes from launcher sizing file 
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: ch-keeper-pv-{{$i}}
+  annotations:
+    helm.sh/resource-policy: keep
+spec:
+  capacity:
+    storage: {{ $e.size }}
+  volumeMode: Filesystem
+  accessModes:
+    - ReadWriteOnce
+  persistentVolumeReclaimPolicy: Retain
+  storageClassName: {{$e.storageClass}}
+  local:
+    path: {{$e.hostPath}}/clickhouse-keeper  # Local path on each node
+  nodeAffinity:
+    required:
+      nodeSelectorTerms:
+        - matchExpressions:
+            - key: kubernetes.io/hostname
+              operator: In
+              values:
+                - "kind-control-plane"  # Use node name from list
+  claimRef:
+    name: clickhouse-keeper-datadir-volume-clickhouse-keeper-{{$i}}  # Name of the PVC that will claim this volume
+    namespace: {{ $namespace }}
+---
+{{- end }}
+{{- end }}

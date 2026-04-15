@@ -1,0 +1,68 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: reporter
+  labels:
+    organization: vunet
+spec:
+  replicas: {{ .Values.replicaCount }}
+  selector:
+    matchLabels:
+      organization: vunet
+      app: reporter
+  template:
+    metadata:
+      labels:
+        organization: vunet
+        app: reporter
+        {{- with .Values.annotations }}
+      annotations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+    spec:
+      {{- with .Values.reporter.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      serviceAccountName: {{ .Values.serviceAccount.name  }}
+      automountServiceAccountToken: {{ .Values.serviceAccount.automountServiceAccountToken }}  #Disable SA token auto-mount
+      {{- if .Values.securityContext }}
+      securityContext: {{- toYaml .Values.podSecurityContext | nindent 8 }}
+      {{- end }}
+      affinity:
+        podAntiAffinity: {{- include "common.affinities.pods" (dict "type" .Values.reporter.podAntiAffinityPreset "component" "grafana" "context" $) | nindent 10 }}
+        {{- with .Values.reporter.affinity.nodeAffinity }}
+        nodeAffinity:
+          {{- toYaml . | nindent 10 }}
+        {{- end }}
+      containers:
+      - name: reporter
+        image: {{ .Values.reporterimage.repository }}/{{ .Values.reporterimage.name }}:{{ .Values.reporterimage.tag }}
+        imagePullPolicy: {{ .Values.reporterimage.pullPolicy }}
+        {{- if .Values.securityContext }}
+        securityContext: {{- toYaml .Values.securityContext | nindent 10 }}
+        {{- end }}
+        ports:
+          - containerPort: {{ .Values.reporterservice.port }}
+            name: http           
+        args:
+          - -ip
+          - {{ .Values.address.private }}
+          - -proto
+          - {{ .Values.address.proto }}
+        env:
+        - name: MAX_WORKERS
+          value: "{{ .Values.maxWorkers }}"
+        {{- if .Values.reporter.resources }}
+        resources: {{- include "common.tplvalues.render" (dict "value" .Values.reporter.resources "context" $) | nindent 12 }}
+        {{- end }}
+      restartPolicy: {{ .Values.restartPolicy }}
+  strategy:
+    type: {{ .Values.strategy.type }}
+    rollingUpdate:
+      maxSurge: {{ .Values.strategy.maxSurge }}
+      maxUnavailable: {{ .Values.strategy.maxUnavailable }}

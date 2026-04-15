@@ -1,0 +1,250 @@
+vunet:
+  dependencies:
+    - "ch-database"
+    - "kafka-cluster"
+    - "keycloak"
+    - "minio-tenant"
+    - "nairobi"
+global:
+  awsSecrets:
+    credentials: |-
+      [default]
+      aws_access_key_id=admin
+      aws_secret_access_key=QMAvDxIqEa
+  imagePullSecrets:
+    - name: ghcr-login-secret
+  extraEnvVars:
+    - name: BASE_URL
+      value: https://traefik
+    - name: IDP_BASE_URL
+      value: https://traefik
+    - name: CLIENT_ID
+      value: orchestration-service
+    - name: GIT_PYTHON_EXECUTABLE
+      value: /usr/bin/git
+    - name: GIT_PYTHON_REFRESH
+      value: none
+    - name: TZ
+      value: Asia/Kolkata
+    - name: VUNET_DOCKER_HOST
+      valueFrom:
+        fieldRef:
+          fieldPath: spec.nodeName
+    - name: GRAFANA_URL
+      value: http://nairobi:3000
+    - name: FCM_SERVICE_ACCOUNT
+      valueFrom:
+        secretKeyRef:
+          name: fcm-secret
+          key: fcm-config
+
+  vuinterfaceConfig:
+    #Name of the bucket in cold store where the archived data needs to be stored.
+    COLD_STORE_BUCKET_NAME: "hs-archives"
+    #Number of days starting from last T-(warm period) which need to be synced to cold store - archival disk.
+    #Update the values, according to the environment
+    DAYS_TO_SYNC_COLD_STORE: "5"
+    #If "False", local minio object store will be used to store the archived data
+    USE_CUSTOM_COLD_STORE: "False"
+    #Credentials of the custom archival object store, this has to be s3 compatible service.
+    #This is needed only if USE_CUSTOM_COLD_STORE is set to "True"
+    #For Cold Store we will be using MINIO NFS so we need to use access point of minio nfs instance.
+    COLD_STORE_ACCESS_POINT: "minio-tenant:9000"
+    #Set the above to 'minio-nfs:9000' when NFS storage is to be for cold tier"
+    COLD_STORE_USE_SECURE: "False"
+    COLD_STORE_CERT_FILE: ""
+    COLD_STORE_VERIFY_CERT: "True"
+    #TOTAL_COLD_STORAGE will be equal to the pvc size of nfs minio in Bytes.
+    #This will be used as total cold storage as a fallback
+    #When we can't find Total Cold Storage using minio admin client
+    TOTAL_COLD_STORAGE: "12000000"
+    #Disk names of Volume names of hot, cold and warm.
+    #Update the disk names, if CH is encrypted
+    HOT_DISK_NAME: "default"
+    HOT_VOLUME_NAME: "hot_volume"
+    WARM_DISK_NAME: "warm_disk"
+    WARM_VOLUME_NAME: "warm_volume"
+    COLD_STORAGE_DISK_NAME: "archival_disk"
+    #To check whether the cold storage is enabled or not
+    #Update it to "False" in case cold storage is disabled
+    COLD_STORE_ENABLED: "True"
+    # SSL Variables
+    #ENABLE_MINIO_SSL : "False"
+    #SSL_CERT_FILE : "/etc/ssl/certs/vunet-ca-cert.pem"
+    #MINIO_ACCESS_POINT : "minio.vsmaps.svc:443"
+    #TRUSTSTORE_PASS : "vusmartmaps"
+    #Update the domain name to receive the alert navigation link from alert channels
+    VSMAPS_DOMAIN: "216.48.184.251"
+    # DS
+    DATASTORE_LABEL: "vunet"
+    # Eventcorrelation
+    ENABLE_3T_CORRELATION: "False"
+    HAS_GRPC_SERVER: "False"
+    CORRELATION_ENABLED: "False"
+    CORRELATION_SERVICE_ADDRESS: "dao"
+    ALERT_SERVICE_ADDRESS: "alert"
+    # Hyperscale
+    #Please check Clickhouse/ch-database helm-chart and update HS_DB_HOST to the service name accordingly
+    HS_DB_HOST: clickhouse
+    HS_DB_NAME: vusmart
+    CH_CLUSTER: vusmart
+    # Data Management
+    # Override this if facing timeout issues with data management tasks
+    # The value is in seconds but "None" can be used to disable the timeout
+    # DATA_MANAGEMENT_BACKUP_TIMEOUT: "900"
+    # DATA_MANAGEMENT_MANAGE_PARTITIONS_TIMEOUT: "900"
+    # DATA_MANAGEMENT_RESTORE_TIMEOUT: "900"
+    # APM
+    APM_DB_HOST: "clickhouse"
+    APM_DB_NAME: "vusmart"
+    # Clickhouse
+    CLICKHOUSE_DB_SERVER: clickhouse
+    CLICKHOUSE_DB_PORT: "9000"
+    # Timescaledb
+    TIMESCALE_DB_PORT: "5432"
+    TIMESCALE_DB_SERVER: timescaledb
+    # Minio
+    MINIO_CONFIG_BUCKET: pipeline-configs
+    MINIO_ACCESS_POINT: minio-tenant:9000
+    MINIO_BUCKET_CONFIG_PATH: /home/vunet/src/denver/rome/utilities/Object_handling/Minio/Minio_bucket_config.json
+    MINIO_FILES_BUCKET: vuml-uploads
+    MINIO_IMAGE_FOLDER: images
+    MINIO_PUBLIC_BUCKET: public
+    MINIO_VERIFY_CERT: "True"
+    # ImportData
+    OBJECT_STORAGE_DETAILS_PATH: "/home/vunet/src/denver/rome/utilities/Object_handling/object_storage_modules_metadata.json"
+    OBJECT_STORAGE_TYPE: "minio"
+    # Mobile app env
+    IDP_ISSUER_ENDPOINT: "/realms/vunet/"
+    IDP_MOBILE_CLIENT_ID: "seoul"
+    # Orchestration
+    ORCHESTRATION_TYPE: "k8s"
+    ORCHESTRATION_CLIENT_ID: orchestration-service
+    # Keycloak
+    # vuSiteManager
+    VUSITE_MANAGER_SERVER: orch-webhook
+    VUSITE_MANAGER_PORT: "8080"
+    # Kubernetes
+    HOST_ENV: kubernetes
+    NAMESPACE: vsmaps
+    AUTH_SERVER_INTROSPECTION_ENDPOINT: https://id.pilot.vunet.io/connect/introspect
+    AUTHORIZATION_ADMIN_SCOPE: vusmartmaps
+    NTP_SYNC_ENABLED: "False"
+    NTP_SERVER: "pool.ntp.org"
+    # Chatbot
+    CHATBOT_ENABLED: "False"
+    # Reports
+    GF_RENDERING_CALLBACK_URL: http://nairobi:3000
+    GF_RENDERING_SERVER_URL: http://renderer:8081/render
+    GF_REPORTING_SERVICE_URL: http://reporter:8686
+    # Denver
+    DENVER_SERVICE_ADDRESS: denver:8882
+    # Kafka
+    KAFKA_PORT: "9092"
+    CONNECT_SERVER: "connect"
+    CONNECT_PORT: "9082"
+    KAFKA_SSL_ENABLED: "False"
+    DAQ_USE_SSL_KAFKA: "False"
+    KAFKA_SERVER: "broker:9092"
+    KAFKA_SSL_SERVER: "broker:9093"
+    KAFKA_SECURITY_PROTOCOL: "SSL"
+    KAFKA_SSL_CHECK_HOSTNAME: "False"
+    KAFKA_SSL_CAFILE: "/home/vunet/encrypt/ca.pem"
+    KAFKA_SSL_CERTFILE: "/home/vunet/encrypt/cert.pem"
+    SQL_SERVER: timescaledb-1
+    SQL_PORT: "5432"
+    REDIS_SERVER: "route"
+    REDIS_PORT: "6379"
+    # Timezone
+    TZ: "Asia/Kolkata"
+    DJANGO_SECRET_KEY: "&e!ohi0+33c11v_5qfm06(vz4n)pcd@oppo2@c+ne4q^g3w@=("
+    GIT_PYTHON_EXECUTABLE: /usr/bin/git
+    GIT_PYTHON_REFRESH: none
+    GRAFANA_URL: http://nairobi:3000
+    GRAFANA_SERVICE_ADDRESS: http://nairobi:3000/vui/api/
+    # app specific environment variables
+    # used by the dcm service in daq for creating encryption/decryption password
+    # for config files in git repo
+    IDAPI_BASE_URL: http://idapi/idapi/api
+    IDP_BASE_URL: https://34.126.213.95/id
+    IDP_CLIENT_ID: mobileApp
+    IDP_HOSTNAME: pilot.vunet.io
+    VUBLOCK_LIST: iis log_collector windows_monitor linux_monitor traces rancher kubernetes postgresql mssql keycloak kong_api_gateway redis service_availability device_availability task_scheduler tomcat jboss rabbitmq palo_alto_firewall fortinet_firewall cisco_switch snmp_polling ohs url_availability weblogic aws_vpc aws_s3 cisco_router cisco_firewall oracle active_directory aws_elasticache vault azure_eventhub solaris_monitor aws_classic_elb aws_api_gateway aix_monitor ibm_mq mysql nginx jvm_monitor ibm_http_server aws_waf aws_nlb nutanix aws_alb aws_cloudfront aws_route53 f5_load_balancer haproxy ssl_certificate_monitor aws_network_firewall amazon_rds dns_monitoring mongodb windows_event_logs sql_data_collector aws_transit_gateway service_monitor apache gke mariadb syslog microsoft_dfs keydb cassandra hpux_monitor http_poller kafka azure_api_management dell_switch azure_app_gateway ibm_was sftp_monitor browser_rum vsphere
+    # System config configurations migrated to environment file
+    CONTAINER_BASED_SETUP: "True"
+    ES_SERVER: "es"
+    ES_PORT: "9200"
+    ELASTIC_SEARCH_VERSION: "7"
+    USE_SSL_ES: "False"
+    ES_SCHEME: "https"
+    ES_SSL_CERT: "mobileApp"
+    ES_SSL_CHECK_HOSTNAME: "False"
+    # Env Variables for the service instance counts
+    VUSNMP_INSTANCES: "1"
+    HEARTBEAT_INSTANCES: "1"
+    VUTELENODE_INSTANCES: "1"
+    TELEGRAF_GENERIC_INSTANCES: "1"
+    VUTELEGRAF_INSTANCES: "1"
+    VUSNMPTRAP_INSTANCES: "1"
+    VUTELEMETRY_INSTANCES: "1"
+    VUSYSLOG_INSTANCES: "1"
+    VUNETFLOW_INSTANCES: "1"
+    VUAPPAGENTTOMCAT_INSTANCES: "1"
+    VUHTTPLISTENER_INSTANCES: "1"
+    VUTRACES_INSTANCES: "1"
+    VURUM_INSTANCES: "1"
+    VU_HTTP_POLLER_INSTANCES: "1"
+    AZURE_METRICS_INSTANCES: "1"
+    TELEGRAF_GLOBAL_INSTANCES: "1"
+    OMNI_DCM_INSTANCES: "1"
+    VUDATANODE_TELEGRAF_INSTANCES: "1"
+    VUMETRIC_INSTANCES: "1"
+    ALERT_SVC_COUNT: "1"
+    # Telegraf cluster config in minio
+    TELEGRAF_CLUSTER_CONFIG: "/vublock-config/telegraf_cluster_config.json"
+    # Port Related configurations
+    NETLOW_LEGACY_PORT: NA
+    NETLOW_PORT: NA
+    SNMP_TRAP_PORT: NA
+    SYSLOG_PORT: NA
+    # Adding PG_USER & PG_PASS to create db_link extension,
+    # as the command requires superuser privileges
+    PG_USER: vusmart
+    PG_PASS: vusmart
+    # Adding Denver & Grafana DB configurations for
+    # bulk-objects-permission functionality
+    DENVER_DB_NAME: vuml_django
+    DENVER_DB_PASS: vusmart
+    DENVER_DB_HOST: timescaledb
+    DENVER_DB_USER: vusmart
+    GRAFANA_DB_NAME: vugrafana
+    GRAFANA_DB_PASS: vusmart
+    GRAFANA_DB_HOST: timescaledb
+    GRAFANA_DB_USER: vusmart
+
+    # `env` toggles to enable/disable and configure
+    # instrumentation for the `vuNode` and `vuInterface`
+    # By default, instrumentation is disabled.
+    OTEL_SDK_DISABLED: "True"
+    OTEL_EXPORTER_ENDPOINT: ""
+    OTEL_TRACING_EXPORTERS: ""
+    OTEL_TRACING_INSTRUMENTORS: ""
+    OTEL_METRICS_EXPORTERS: ""
+    OTEL_METRICS_INSTRUMENTORS: ""
+    OTEL_PYTHON_EXCLUDED_URLS: ""
+
+serviceAccount:
+  # Specifies whether a service account should be created
+  create: true
+  # Annotations to add to the service account
+  annotations: {}
+  # The name of the service account to use.
+  # If not set and create is true, a name is generated using the fullname template
+  name: "vunode"
+  roleName: "vunode-role"
+  roleBindName: "vunode-role-bind"
+  automountServiceAccountToken: true
+
+vuinterface:
+  serviceAccount:
+    name: "vunode"

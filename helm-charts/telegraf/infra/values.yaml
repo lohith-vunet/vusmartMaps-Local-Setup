@@ -1,0 +1,396 @@
+# vulauncher will update this section while deployment
+vunet:
+  imageServer: &imageServer ghcr.io
+  imageName: &imageName vunetsystems/vutelegraf
+  imageTag: &imageTag "1.32.17"
+  # cpu and memory min and max values
+  resources: &resources
+    limits:
+      cpu: "0.5"
+      memory: 500Mi
+    requests:
+      cpu: "0.2"
+      memory: 250Mi
+  # priority node labels
+  nodeAffinity: &nodeAffinity {}
+  # tolerations
+  tolerations: &tolerations []
+  # number of pods to run
+  replicas: &replicas 1
+  # pvc size that will be claimed. For redis we will use default section. All others
+  # will be zero value
+  hot:
+    size: &hotSize ""
+    enabled: &hotEnabled false
+    encrypted: &hotEncrypted false
+    storageclass: &hotStorageClass ""
+  warm:
+    size: &warmSize ""
+    enabled: &warmEnabled false
+    encrypted: &warmEncrypted false
+    storageclass: &warmStorageClass ""
+  cold:
+    size: &coldSize ""
+    enabled: &coldEnabled false
+    encrypted: &coldEncrypted false
+    storageclass: &coldStorageClass ""
+  default:
+    size: &defaultSize ""
+    enabled: &defaultEnabled false
+    encrypted: &defaultEncrypted false
+    storageclass: &defaultStorageClass ""
+  default-replica:
+    size: &defaultReplicaSize ""
+    enabled: &defaultReplicaEnabled false
+    encrypted: &defaultReplicaEncrypted false
+    storageclass: &defaultReplicaStorageClass ""
+  host:
+    size: &hostSize ""
+    enabled: &hostEnabled false
+    encrypted: &hostEncrypted false
+    storageclass: &hostStorageClass ""
+  # ghcr credentials
+  pullSecretName: &pullSecretName ghcr-login-secret
+  dependencies:
+    - "ch-database"
+## Default values.yaml for Telegraf
+## This is a YAML-formatted file.
+## ref: https://hub.docker.com/r/library/telegraf/tags/
+
+posthook:
+  repository: *imageServer
+  imageName: vunetsystems/kubectl
+  imageTag: v2.15.0
+image:
+  repository: *imageServer
+  name: *imageName
+  tag: *imageTag
+  pullPolicy: IfNotPresent
+imagePullSecrets:
+  - name: *pullSecretName
+## Configure resource requests and limits
+## ref: http://kubernetes.io/docs/user-guide/compute-resources/
+resources: *resources
+# requests:
+#     memory: 256Mi
+#     cpu: 0.1
+# limits:
+#     memory: 2Gi
+#     cpu: 1
+
+kubectlResources:
+  requests:
+    cpu: "50m"
+    memory: "100Mi"
+  limits:
+    cpu: "100m"
+    memory: "200Mi"
+## Pod annotations
+podAnnotations: {}
+## Pod labels
+podLabels: {}
+## Configure args passed to Telegraf containers
+args: []
+## The name of a secret in the same kubernetes namespace which contains values to
+## be added to the environment (must be manually created)
+## This can be useful for auth tokens, etc.
+# envFromSecret: "telegraf-tokens"
+
+## Environment
+env:
+  # This pulls HOSTNAME from the node, not the pod.
+  - name: HOSTNAME
+    valueFrom:
+      fieldRef:
+        fieldPath: spec.nodeName
+  # In test clusters where hostnames are resolved in /etc/hosts on each node,
+  # the HOSTNAME is not resolvable from inside containers
+  # So inject the host IP as well
+  - name: HOSTIP
+    valueFrom:
+      fieldRef:
+        fieldPath: status.hostIP
+  # Mount the host filesystem and set the appropriate env variables.
+  # ref: https://github.com/influxdata/telegraf/blob/master/docs/FAQ.md
+  # HOST_PROC is required by the cpu, disk, diskio, kernel and processes input plugins
+  - name: "HOST_PROC"
+    value: "/hostfs/proc"
+  # HOST_SYS is required by the diskio plugin
+  - name: "HOST_SYS"
+    value: "/hostfs/sys"
+  - name: "HOST_MOUNT_PREFIX"
+    value: "/hostfs"
+  - name: CH_CLUSTER
+    value: vusmart
+  - name: CH_HOST
+    value: clickhouse.vsmaps
+  - name: CH_PORT
+    value: "9000"
+  - name: CH_MONIT_PORT
+    value: "9000"
+  - name: CH_MONIT_HOST
+    value: clickhouse.vsmaps
+## Add custom volumes and mounts
+# volumes:
+# - name: telegraf-output-influxdb2
+#   configMap:
+#     name: "telegraf-output-influxdb2"
+# mountPoints:
+# - name: telegraf-output-influxdb2
+#   mountPath: /etc/telegraf/conf.d
+#   subPath: influxdb2.conf
+
+## Tolerations for pod assignment
+## ref: https://kubernetes.io/docs/concepts/configuration/taint-and-toleration/
+##
+tolerations: *tolerations
+## If the DaemonSet should run on the host's network namespace
+## hostNetwork: true
+
+## If using hostNetwork=true, set dnsPolicy to ClusterFirstWithHostNet
+## ref: https://kubernetes.io/docs/concepts/services-networking/dns-pod-service/#
+## dnsPolicy: ClusterFirstWithHostNet
+
+## If using dnsPolicy=None, set dnsConfig
+## ref: https://kubernetes.io/docs/concepts/services-networking/dns-pod-service/#pod-dns-config
+## dnsConfig:
+##   nameservers:
+##     - 1.2.3.4
+##   searches:
+##     - ns1.svc.cluster-domain.example
+##     - my.dns.search.suffix
+##   options:
+##     - name: ndots
+##       value: "2"
+##     - name: edns0
+rbac:
+  # Specifies whether RBAC resources should be created
+  create: true
+serviceAccount:
+  # Specifies whether a ServiceAccount should be created
+  create: true
+  # The name of the ServiceAccount to use.
+  # If not set and create is true, a name is generated using the fullname template
+  name: infra
+  # Annotations for the ServiceAccount
+  annotations: {}
+  automountServiceAccountToken: true
+## Specify priorityClassName
+## Ref: https://kubernetes.io/docs/concepts/configuration/pod-priority-preemption/
+# priorityClassName: system-node-critical
+
+# Specify the pod's SecurityContext, including the OS user and group to run the pod
+securityContext:
+  privileged: false
+  seccompProfile:
+    type: RuntimeDefault
+  capabilities:
+    add: ["CAP_NET_RAW"]
+  allowPrivilegeEscalation: false # Prevent privilege escalation
+  readOnlyRootFilesystem: true # service not generating any tmp files/data part of pod lifecycle so making root file system readOnly.
+  runAsNonRoot: true
+podSecurityContext:
+  fsGroup: 1000
+  runAsUser: 1000
+  runAsGroup: 1000
+  runAsNonRoot: true
+  seccompProfile:
+    type: RuntimeDefault
+override_config:
+  toml: |
+    [agent]
+      collection_jitter = "0s"
+      debug = false
+      flush_interval = "60s"
+      flush_jitter = "0s"
+      hostname = "$HOSTNAME"
+      interval = "60s"
+      logfile = ""
+      metric_batch_size = 1000
+      metric_buffer_limit = 10000
+      omit_hostname = false
+      precision = ""
+      quiet = false
+      round_interval = true
+    [[processors.topk]]
+      fields = [
+        "cpu_time_user",
+        "cpu_usage",
+        "memory_rss"
+      ]
+      namepass = [
+        "*procstat*"
+      ]
+    [[processors.regex]]
+      namepass = [
+        "*procstat*"
+      ]
+    [[processors.regex.tags]]
+      key = "process_name"
+      pattern = "^(.{60}).*"
+      replacement = "${1}..."
+
+    [[outputs.clickhouse]]
+     	data_source_name = "clickhouse.vsmaps:9000"
+     	username = "${VUSMART_USERNAME}"
+     	password = "${VUSMART_PASSWORD}"
+     	database = "monitoring"
+     	ch_cluster = "vusmart"
+
+     	# table_exists_template = "SELECT 1 FROM {TABLE} LIMIT 1"
+
+      ## The statement defined here will be used by telegraf to check whether table exists.
+      ## There are multiple commands available to check the presence of a table.
+      ## We use EXISTS command as that has been observed to be he most efficient.
+      table_exists_template = "EXISTS table monitoring.{TABLE}"
+
+     	table_template = "CREATE TABLE IF NOT EXISTS \"{TABLE}_data\" ON CLUSTER {CLUSTER} ({COLUMNS}) ENGINE = ReplicatedMergeTree('/clickhouse/tables/\"{TABLE}_data\"/{shard}', '{replica}') ORDER BY timestamp Partition by toYYYYMMDD(timestamp) TTL timestamp + INTERVAL 3 DAY;"
+
+     	additional_templates = ["CREATE TABLE IF NOT EXISTS {TABLE} ON CLUSTER {CLUSTER} ({COLUMNS}) ENGINE=Distributed({CLUSTER}, 'monitoring', \"{TABLE}_data\", rand())"]
+     	postfixes = ["_data"]
+
+     	timestamp_column = "timestamp"
+
+      [outputs.clickhouse.convert]
+       	bool = "UInt8"
+       	conversion_style = "literal"
+       	defaultvalue = "String"
+       	integer = "Int64"
+       	real = "Float64"
+       	text = "String"
+       	timestamp = "DateTime"
+       	unsigned = "UInt64"
+
+
+    [[inputs.procstat]]
+      cmdline_tag = true
+      fieldpass = [
+        "cpu_time_user",
+        "cpu_usage",
+        "memory_rss"
+      ]
+      name_suffix = "_TopNProcess"
+      pattern = "."
+      pid_finder = "native"
+      pid_tag = true
+    [[inputs.mem]]
+      interval = "300s"
+    [[inputs.diskio]]
+      fieldpass = [
+        "reads",
+        "writes",
+        "read_bytes",
+        "write_bytes",
+        "read_time",
+        "write_time",
+        "io_time",
+        "weighted_io_time",
+        "iops_in_progress",
+        "merged_reads",
+        "merged_writes"
+      ]
+      interval = "60s"
+    [[inputs.net]]
+      fieldpass = [
+        "bytes_sent",
+        "bytes_recv",
+        "packets_sent",
+        "packets_recv",
+        "err_in",
+        "err_out",
+        "drop_in",
+        "drop_out"
+      ]
+      interval = "60s"
+    [[inputs.swap]]
+      fieldpass = [
+        "free",
+        "total",
+        "used",
+        "used_percent",
+        "in",
+        "out"
+      ]
+      interval = "60s"
+    [[inputs.system]]
+      fieldpass = [
+        "load1",
+        "load5",
+        "load15",
+        "n_users",
+        "n_unique_users",
+        "n_cpus",
+        "uptime"
+      ]
+      interval = "60s"
+    [[inputs.cpu]]
+      collect_cpu_time = true
+      interval = "60s"
+      percpu = false
+      report_active = true
+      totalcpu = true
+    [[inputs.disk]]
+      fieldpass = [
+        "free",
+        "total",
+        "used",
+        "used_percent",
+        "inodes_free",
+        "inodes_total",
+        "inodes_used"
+      ]
+      ignore_fs = [
+        "shm",
+        "tmpfs",
+        "devtmpfs",
+        "devfs",
+        "iso9660",
+        "overlay",
+        "aufs",
+        "squashfs"
+      ]
+      interval = "300s"
+    [[inputs.kubernetes]]
+      bearer_token = "/var/run/secrets/kubernetes.io/serviceaccount/token"
+      insecure_skip_verify = true
+      interval = "60s"
+      url = "https://$HOSTIP:10250"
+  # Provide a literal TOML config
+  # toml: |+
+  #   [global_tags]
+  #     foo = "bar"
+  #   [agent]
+  #     interval = "10s"
+  #   [[inputs.mem]]
+  #   [[outputs.influxdb_v2]]
+  #     urls           = ["https://us-west-2-1.aws.cloud2.influxdata.com"]
+  #     bucket         = "data"
+  #     organization   = "OurCompany"
+  #     token          = "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
+## Exposed telegraf configuration
+## ref: https://docs.influxdata.com/telegraf/v1.13/administration/configuration/
+config:
+  # global_tags:
+  #   cluster: "mycluster"
+  agent:
+    interval: "300s"
+    round_interval: true
+    metric_batch_size: 1000
+    metric_buffer_limit: 10000
+    collection_jitter: "0s"
+    flush_interval: "60s"
+    flush_jitter: "0s"
+    precision: ""
+    debug: false
+    quiet: false
+    logfile: ""
+    hostname: "$HOSTNAME"
+    omit_hostname: false
+  inputs:
+  processors:
+  outputs:
+  #- file:
+  #    files: ["stdout","/tmp/metrics.json"]
+  #    data_format: "json"
+  monitor_self: false
+  docker_endpoint: ""

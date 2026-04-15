@@ -1,0 +1,188 @@
+## vulauncher will update this section while deployment
+vunet:
+  imageServer: &imageServer ghcr.io
+  imageName: &imageName vunetsystems/orchestrator
+  imageTag: &imageTag "2.16"
+  # cpu and memory min and max values
+  resources: &resources
+    limits:
+      cpu: "0.2"
+      memory: 500Mi
+    requests:
+      cpu: "0.1"
+      memory: 250Mi
+  # priority node labels
+  nodeAffinity: &nodeAffinity {}
+  # tolerations
+  tolerations: &tolerations []
+  # number of pods to run
+  replicas: &replicas 1
+  hot:
+    size: &hotSize ""
+    enabled: &hotEnabled false
+    encrypted: &hotEncrypted false
+    storageclass: &hotStorageClass ""
+  warm:
+    size: &warmSize ""
+    enabled: &warmEnabled false
+    encrypted: &warmEncrypted false
+    storageclass: &warmStorageClass ""
+  cold:
+    size: &coldSize ""
+    enabled: &coldEnabled false
+    encrypted: &coldEncrypted false
+    storageclass: &coldStorageClass ""
+  default:
+    size: &defaultSize ""
+    enabled: &defaultEnabled false
+    encrypted: &defaultEncrypted false
+    storageclass: &defaultStorageClass ""
+  default-replica:
+    size: &defaultReplicaSize ""
+    enabled: &defaultReplicaEnabled false
+    encrypted: &defaultReplicaEncrypted false
+    storageclass: &defaultReplicaStorageClass ""
+  host:
+    size: &hostSize ""
+    enabled: &hostEnabled false
+    encrypted: &hostEncrypted false
+    storageclass: &hostStorageClass ""
+  # ghcr credentials
+  pullSecretName: &pullSecretName ghcr-login-secret
+  dependencies:
+    - "minio-tenant"
+posthook:
+  repository: *imageServer
+  imageName: vunetsystems/kubectl
+  imageTag: v2.15.0
+# deployment template information. Here the key is name th of template
+# as per vublock-store repo value will be set by vuLauncher based on sizing file tags
+deploymentEnv:
+  pipeline: ""
+  goflow-netflow-template: ""
+  healthbeat: ""
+  logbeat: ""
+  otel-collector: ""
+  rum-otel-collector: ""
+  telegraf-aws-apigateway-template: ""
+  telegraf-aws-cloudfront-template: ""
+  telegraf-aws-elasticache-template: ""
+  telegraf-aws-network-firewall-template: ""
+  telegraf-aws-transit-gateway-template: ""
+  telegraf-aws-waf-template: ""
+  telegraf-generic-template: ""
+  telegraf-http-receiver-template: ""
+  telegraf-keycloak-template: ""
+  telegraf-kong-template: ""
+  telegraf-mssql-polling-template: ""
+  telegraf-nutanix-template: ""
+  telegraf-rabbitmq-template: ""
+  telegraf-sdc-template: ""
+  telegraf-snmp-availability-template: ""
+  telegraf-snmp-polling-template: ""
+  telegraf-snmp-trap-template: ""
+  telegraf-ssl-certificate-monitor-template: ""
+  telegraf-syslog-template-new: ""
+  # if we want orchestrator to use hard affinity then uncomment below line
+  # affinity_type: "hard"
+#
+# Default values for orchestration.
+# This is a YAML-formatted file.
+# Declare variables to be passed into your templates.
+replicaCount: *replicas
+image:
+  repository: *imageServer
+  name: *imageName
+  pullPolicy: IfNotPresent
+  # Overrides the image tag whose default is the chart appVersion.
+  tag: *imageTag
+imagePullSecrets:
+  - name: *pullSecretName
+nameOverride: ""
+fullnameOverride: "orchestration"
+extraEnvVars: {}
+podAnnotations:
+  apparmor.security.beta.kubernetes.io/pod: runtime/default
+podAntiAffinityPreset: ""
+## Node affinity preset
+## Ref: https://kubernetes.io/docs/concepts/scheduling-eviction/assign-pod-node/#node-affinity
+## @param cairo.nodeAffinityPreset.type Node affinity preset type. Ignored if `affinity` is set. Allowed values: `soft` or `hard`
+## @param cairo.nodeAffinityPreset.key Node label key to match Ignored if `affinity` is set.
+## @param cairo.nodeAffinityPreset.values Node label values to match. Ignored if `affinity` is set.
+##
+nodeAffinityPreset:
+  type: ""
+  ## E.g.
+  ## key: "kubernetes.io/e2e-az-name"
+  ##
+  key: ""
+  ## E.g.
+  ## values:
+  ##   - e2e-az1
+  ##   - e2e-az2
+  ##
+  values: [""]
+affinity:
+  nodeAffinity: *nodeAffinity
+  # fsGroup: 2000
+serviceAccount:
+  # Specifies whether a service account should be created
+  create: true
+  # Annotations to add to the service account
+  annotations: {}
+  # The name of the service account to use.
+  # If not set and create is true, a name is generated using the fullname template
+  name: "orchestration"
+  roleName: "orchestration-role"
+  roleBindName: "orchestration-role-bind"
+  automountServiceAccountToken: true
+podSecurityContext:
+  runAsUser: 1000
+  runAsGroup: 1000
+  fsGroup: 1000
+  runAsNonRoot: true
+  seccompProfile:
+    type: RuntimeDefault
+securityContext:
+  privileged: false
+  allowPrivilegeEscalation: false # Prevent privilege escalation
+  capabilities:
+    drop: ["ALL"]
+  readOnlyRootFilesystem: true # service not generating any tmp files/data part of pod lifecycle so making root file system readOnly.
+  runAsNonRoot: true
+  seccompProfile:
+    type: RuntimeDefault
+service:
+  name: orch-webhook
+  webhook:
+    port: 13000
+  api:
+    port: 8080
+  type: ClusterIP
+resources: *resources
+# We usually recommend not to specify default resources and to leave this as a conscious
+# choice for the user. This also increases chances charts run on environments with little
+# resources, such as Minikube. If you do want to specify resources, uncomment the following
+# lines, adjust them as necessary, and remove the curly braces after 'resources:'.
+# limits:
+#   cpu: 100m
+#   memory: 128Mi
+# requests:
+#   cpu: 100m
+#   memory: 128Mi
+
+autoscaling:
+  enabled: false
+  minReplicas: 1
+  maxReplicas: 100
+  targetCPUUtilizationPercentage: 80
+  # targetMemoryUtilizationPercentage: 80
+nodeSelector: {}
+tolerations: *tolerations
+kubectlResources:
+  requests:
+    cpu: "50m"
+    memory: "100Mi"
+  limits:
+    cpu: "100m"
+    memory: "200Mi"

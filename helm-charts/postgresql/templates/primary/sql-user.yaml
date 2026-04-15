@@ -1,0 +1,34 @@
+apiVersion: v1
+data:
+  user.sql: |
+    create database multicore;
+    create database vugrafana;
+    create database airflow;
+    create database mlflow;
+    create database vuml_django;
+    CREATE USER report WITH PASSWORD 'beta';
+    GRANT CONNECT ON DATABASE vusmart TO report;
+    GRANT USAGE ON SCHEMA public TO report;
+    GRANT SELECT ON ALL TABLES IN SCHEMA public TO report;
+    ALTER DEFAULT PRIVILEGES IN SCHEMA public
+    GRANT SELECT ON TABLES TO report;
+
+
+
+    CREATE USER core WITH PASSWORD 'beta';
+    GRANT CONNECT ON DATABASE vusmart TO core;
+    GRANT USAGE ON SCHEMA public TO core;
+    GRANT ALL PRIVILEGES ON DATABASE multicore TO core;
+    GRANT ALL PRIVILEGES  ON DATABASE vusmart TO core;
+    CREATE PUBLICATION dbz_publication FOR ALL TABLES;
+    ALTER USER core REPLICATION;
+kind: ConfigMap
+metadata:
+  creationTimestamp: null
+  name: sql-user
+  namespace: {{ .Release.Namespace | quote }}
+  {{- if .Values.commonAnnotations }}
+  annotations: {{- include "common.tplvalues.render" ( dict "value" .Values.commonAnnotations "context" $ ) | nindent 4 }}
+  {{- end }}
+
+

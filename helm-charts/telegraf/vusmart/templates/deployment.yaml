@@ -1,0 +1,136 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "telegraf.fullname" . }}
+  labels:
+    {{- include "telegraf.labels" . | nindent 4 }}
+spec:
+  replicas: {{ .Values.replicaCount }}
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: {{ include "telegraf.name" . }}
+      app.kubernetes.io/instance: {{ .Release.Name }}
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: {{ include "telegraf.name" . }}
+        app.kubernetes.io/instance: {{ .Release.Name }}
+        {{- with .Values.podLabels }}
+{{ toYaml . | indent 8 }}
+        {{- end }}
+      annotations:
+        # Include a hash of the configmap in the pod template
+        # This means that if the configmap changes, the deployment will be rolled
+        checksum/config: {{ include (print $.Template.BasePath "/configmap.yaml") . | sha256sum }}
+        {{- if .Values.podAnnotations }}
+{{ toYaml .Values.podAnnotations | indent 8 }}
+        {{- end }}
+        {{- include "cairo.annotations" . | nindent 8 }}
+    spec:
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- if .Values.podSecurityContext }}
+      securityContext: {{- toYaml .Values.podSecurityContext | nindent 8 }}
+      {{- end }}
+      affinity:
+        {{- if .Values.affinity.nodeAffinity }}
+        nodeAffinity:
+{{ toYaml .Values.affinity.nodeAffinity | nindent 8}}
+        {{- end }}
+      serviceAccountName: {{ template "telegraf.serviceAccountName" . }}
+      automountServiceAccountToken: {{ .Values.serviceAccount.automountServiceAccountToken }}  #Enabled SA token auto-mount since needed for Service
+{{- if .Values.priorityClassName }}
+      priorityClassName: {{ .Values.priorityClassName | quote }}
+{{- end }}
+      containers:
+      - name: {{ .Chart.Name }}
+        {{- with .Values.securityContext }}
+        securityContext:
+        {{- toYaml . | nindent 10 }}
+        {{- end }}
+        image: "{{ .Values.image.repository }}/{{ .Values.image.name }}:{{ .Values.image.tag }}"
+        imagePullPolicy: {{ default "" .Values.image.pullPolicy | quote }}
+        resources:
+{{ toYaml .Values.resources | indent 10 }}
+        {{- if .Values.args }}
+        args:
+{{ toYaml .Values.args | indent 8 }}
+        {{- end }}
+        env:
+        - name: VUSMART_USERNAME
+          valueFrom:
+            secretKeyRef:
+              name: vusmart-secret
+              key: VUSMART_USERNAME
+        - name: VUSMART_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: vusmart-secret
+              key: VUSMART_PASSWORD
+        - name: DNS_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: vusmart-secret
+              key: DNS_PASSWORD
+        - name: NODE_HOSTIP
+          valueFrom:
+            fieldRef:
+              fieldPath: status.hostIP
+{{ toYaml .Values.env | indent 8 }}
+        {{- if .Values.envFromSecret }}
+        envFrom:
+          - secretRef:
+              name: {{ .Values.envFromSecret }}
+{{- end }}
+        volumeMounts:
+        - name: hostfsro
+          mountPath: /hostfs
+          readOnly: true
+        {{- if hasPrefix "unix" .Values.config.docker_endpoint }}
+        - name: docker-socket
+          mountPath: {{ trimPrefix "unix://" .Values.config.docker_endpoint }}
+        {{- end }}
+        - name: config
+          mountPath: /etc/telegraf
+        {{- if .Values.mountPoints }}
+{{ toYaml .Values.mountPoints | indent 8 }}
+        {{- end }}
+      {{- with .Values.nodeSelector }}
+      nodeSelector:
+{{ toYaml . | indent 8 }}
+      {{- end }}
+      {{- with .Values.affinity }}
+      affinity:
+{{ toYaml . | indent 8 }}
+      {{- end }}
+      {{- with .Values.tolerations }}
+      tolerations:
+{{ toYaml . | indent 8 }}
+      {{- end }}
+      volumes:
+      - name: hostfsro
+        hostPath:
+          path: /
+      {{- if hasPrefix "unix" .Values.config.docker_endpoint }}
+      - name: docker-socket
+        hostPath:
+          path: {{ trimPrefix "unix://" .Values.config.docker_endpoint }}
+          type: Socket
+      {{- end }}
+      - name: config
+        configMap:
+          name:  {{ include "telegraf.fullname" . }}
+      {{- if .Values.volumes }}
+{{ toYaml .Values.volumes | indent 6 }}
+      {{- end }}
+      hostNetwork: {{ default false .Values.hostNetwork }}
+      {{- if .Values.dnsPolicy }}
+      dnsPolicy: {{ .Values.dnsPolicy }}
+      {{- end }}
+      {{- with .Values.dnsConfig }}
+      dnsConfig:
+{{ toYaml . | indent 8 }}
+      {{- end }}
+

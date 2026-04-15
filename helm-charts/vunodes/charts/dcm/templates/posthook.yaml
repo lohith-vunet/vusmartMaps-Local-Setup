@@ -1,0 +1,46 @@
+{{- if and (.Values.dcm.replicas) (gt (int .Values.dcm.replicas) 0) }}
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: post-install-job-dcm
+  annotations:
+    "helm.sh/hook": post-install
+    "helm.sh/hook-delete-policy": hook-succeeded
+spec:
+  template:
+    spec:
+      {{- with .Values.dcm.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      imagePullSecrets: {{- toYaml .Values.imagePullSecrets | nindent 8 }}
+      serviceAccountName: posthook-sa
+      automountServiceAccountToken: true
+      {{- if .Values.podSecurityContext }}
+      securityContext: {{- toYaml .Values.podSecurityContext | nindent 8 }}
+      {{- end }}
+      containers:
+      - name: post-install-check-dcm
+        {{- if .Values.securityContext }}
+        securityContext: {{- toYaml .Values.securityContext | nindent 10 }}
+        {{- end }}
+        resources: {{- toYaml .Values.kubectlResources | nindent 12 }}
+        image: "{{ .Values.posthook.repository }}/{{ .Values.posthook.imageName }}:{{ .Values.posthook.imageTag }}"
+        command: ["/bin/sh", "-c"]
+        args:
+          - |
+            for i in $(seq 1 1000000) ; do
+              unavailableReplicas=`kubectl get deploy dcm -n {{ .Release.Namespace }} -ojsonpath='{.status.unavailableReplicas}'`
+              echo "unavailable Replicas count = $unavailableReplicas"
+
+              if [ -z "$unavailableReplicas" ];then
+                echo "pods are ready"
+                exit 0
+              else
+                echo "pods are not ready"
+                sleep 10
+              fi
+            done;
+      restartPolicy: Never
+{{- end }}
+

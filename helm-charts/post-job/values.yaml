@@ -1,0 +1,435 @@
+# vulauncher will update this section while deployment
+vunet:
+  imageServer: &imageServer vunet-registry:5000
+  imageName: &imageName vunetsystems/cairo
+  imageTag: &imageTag 2.16.901
+  vublockStoreImage: &vublockStoreImage vunetsystems/vublock-store
+  vublockStoreImageTag: &vublockStoreImageTag 2.16.167
+  # cpu and memory min and max values
+  resources: &resources
+    limits:
+      cpu: "0.3"
+      memory: 500Mi
+    requests:
+      cpu: "0.2"
+      memory: 250Mi
+  # priority node labels
+  nodeAffinity: &nodeAffinity {}
+  # tolerations
+  tolerations: &tolerations []
+  # number of pods to run
+  replicas: &replicas 1
+  # pvc size that will be claimed. For redis we will use default section. All others
+  # will be zero value
+  hot:
+    size: &hotSize ""
+    enabled: &hotEnabled false
+    encrypted: &hotEncrypted false
+    storageclass: &hotStorageClass ""
+  warm:
+    size: &warmSize ""
+    enabled: &warmEnabled false
+    encrypted: &warmEncrypted false
+    storageclass: &warmStorageClass ""
+  cold:
+    size: &coldSize ""
+    enabled: &coldEnabled false
+    encrypted: &coldEncrypted false
+    storageclass: &coldStorageClass ""
+  default:
+    size: &defaultSize ""
+    enabled: &defaultEnabled false
+    encrypted: &defaultEncrypted false
+    storageclass: &defaultStorageClass ""
+  default-replica:
+    size: &defaultReplicaSize ""
+    enabled: &defaultReplicaEnabled false
+    encrypted: &defaultReplicaEncrypted false
+    storageclass: &defaultReplicaStorageClass ""
+  host:
+    size: &hostSize ""
+    enabled: &hostEnabled false
+    encrypted: &hostEncrypted false
+    storageclass: &hostStorageClass ""
+  # ghcr credentials
+  pullSecretName: &pullSecretName ghcr-login-secret
+  # loadbalancer IP information
+  loadbalancer: &loadbalancer []
+  dependencies:
+    - "vunodes"
+cairo:
+  image:
+    repository: *imageServer
+    name: *imageName
+    tag: *imageTag
+    pullPolicy: IfNotPresent
+  insight:
+    args:
+      - cd /opt/insight-store; python install.py
+  extraEnvVars:
+    - name: BASE_URL
+      value: https://traefik
+    - name: IDP_BASE_URL
+      value: https://traefik
+    - name: CLIENT_ID
+      value: orchestration-service
+    - name: VUNET_DOCKER_HOST
+      valueFrom:
+        fieldRef:
+          fieldPath: spec.nodeName
+    - name: GRAFNA_API_KEY
+      value: eyJrIjoiNUhsSVU5aFdnUXowZU9jbm1OaDhxVEJRV3NQT2h3UTciLCJuIjoidnVtb2R1bGUiLCJpZCI6MX0=
+    - name: ENABLE_MINIO_SSL
+      value: "False"
+    - name: SSL_CERT_FILE
+      value: /etc/ssl/certs/vunet-ca-cert.pem
+    - name: TRUSTSTORE_PASS
+      value: vusmartmaps
+    - name: VSMAPS_DOMAIN
+      value: qa.vunetsystems.com
+    - name: DATASTORE_LABEL
+      value: vunet
+    - name: ENABLE_3T_CORRELATION
+      value: "False"
+    - name: HAS_GRPC_SERVER
+      value: "False"
+    - name: CORRELATION_ENABLED
+      value: "False"
+    - name: CORRELATION_SERVICE_ADDRESS
+      value: dao
+    - name: ALERT_SERVICE_ADDRESS
+      value: alert
+    - name: HS_DB_HOST
+      value: clickhouse
+    - name: HS_DB_NAME
+      value: vusmart
+    - name: CH_CLUSTER
+      value: vusmart
+    - name: APM_DB_HOST
+      value: clickhouse
+    - name: APM_DB_NAME
+      value: vusmart
+    - name: CLICKHOUSE_DB_SERVER
+      value: clickhouse
+    - name: CLICKHOUSE_DB_PORT
+      value: "9000"
+    - name: TIMESCALE_DB_PORT
+      value: "5432"
+    - name: TIMESCALE_DB_SERVER
+      value: timescaledb
+    - name: MINIO_CONFIG_BUCKET
+      value: pipeline-configs
+    - name: MINIO_ACCESS_POINT
+      value: minio-api-nodeport:9000
+    - name: MINIO_BUCKET_CONFIG_PATH
+      value: /home/vunet/src/denver/rome/utilities/Object_handling/Minio/Minio_bucket_config.json
+    - name: MINIO_FILES_BUCKET
+      value: vuml-uploads
+    - name: MINIO_IMAGE_FOLDER
+      value: images
+    - name: MINIO_PUBLIC_BUCKET
+      value: public
+    - name: OBJECT_STORAGE_DETAILS_PATH
+      value: /home/vunet/src/denver/rome/utilities/Object_handling/object_storage_modules_metadata.json
+    - name: OBJECT_STORAGE_TYPE
+      value: minio
+    - name: IDP_ISSUER_ENDPOINT
+      value: /realms/vunet/
+    - name: IDP_MOBILE_CLIENT_ID
+      value: seoul
+    - name: ORCHESTRATION_TYPE
+      value: k8s
+    - name: ORCHESTRATION_CLIENT_ID
+      value: orchestration-service
+    - name: VUSITE_MANAGER_SERVER
+      value: orch-webhook
+    - name: VUSITE_MANAGER_PORT
+      value: "8080"
+    - name: HOST_ENV
+      value: kubernetes
+    - name: NAMESPACE
+      value: vsmaps
+    - name: USER
+      value: vunet
+    - name: AUTH_SERVER_INTROSPECTION_ENDPOINT
+      value: https://id.pilot.vunet.io/connect/introspect
+    - name: AUTHORIZATION_ADMIN_SCOPE
+      value: vusmartmaps
+    - name: NTP_SYNC_ENABLED
+      value: "False"
+    - name: NTP_SERVER
+      value: pool.ntp.org
+    - name: CHATBOT_ENABLED
+      value: "False"
+    - name: DENVER_SERVICE_ADDRESS
+      value: denver:8882
+    - name: KAFKA_PORT
+      value: "9092"
+    - name: CONNECT_SERVER
+      value: connect
+    - name: CONNECT_PORT
+      value: "9082"
+    - name: KAFKA_SSL_ENABLED
+      value: "False"
+    - name: DAQ_USE_SSL_KAFKA
+      value: "False"
+    - name: KAFKA_SERVER
+      value: broker:9092
+    - name: KAFKA_SSL_SERVER
+      value: broker:9093
+    - name: KAFKA_SECURITY_PROTOCOL
+      value: SSL
+    - name: KAFKA_SSL_CHECK_HOSTNAME
+      value: "False"
+    - name: KAFKA_SSL_CAFILE
+      value: /home/vunet/encrypt/ca.pem
+    - name: KAFKA_SSL_CERTFILE
+      value: /home/vunet/encrypt/cert.pem
+    - name: SQL_SERVER
+      value: timescaledb-1
+    - name: SQL_PORT
+      value: "5432"
+    - name: REDIS_SERVER
+      value: route
+    - name: REDIS_PORT
+      value: "6379"
+    - name: TZ
+      value: Asia/Kolkata
+    - name: DJANGO_SECRET_KEY
+      value: "&e!ohi0+33c11v_5qfm06(vz4n)pcd@oppo2@c+ne4q^g3w@=("
+    - name: GRAFANA_URL
+      value: http://nairobi:3000
+    - name: GRAFANA_SERVICE_ADDRESS
+      value: http://nairobi:3000/vui/api/
+    - name: IDAPI_BASE_URL
+      value: http://idapi/idapi/api
+    - name: IDAPI_MTLS_CLIENT_CERT_PATH
+      value: /etc/vunet/idapi-mtls.pem
+    - name: IDAPI_MTLS_CLIENT_KEY_PATH
+      value: /etc/vunet/idapi-mtls-key.pem
+    - name: IDAPI_MTLS_CLIENT_CA_PATH
+      value: /etc/vunet/idapi-mtls-ca.pem
+    - name: VUNET_CERT_PATH
+      value: /etc/vunet/vunet-cert.pem
+    - name: VUNET_KEY_PATH
+      value: /etc/vunet/vunet-key.pem
+    - name: VUNET_CA_PATH
+      value: /etc/vunet/vunet-ca.pem
+    - name: FRONTEND_API_CLIENT_SECRET
+      value: h4kdiu8YF3B1
+vublockstore:
+  image:
+    repository: *imageServer
+    name: *vublockStoreImage
+    tag: *vublockStoreImageTag
+    pullPolicy: IfNotPresent
+  extraEnvVars:
+    - name: BASE_URL
+      value: https://traefik
+    - name: IDP_BASE_URL
+      value: https://traefik
+    - name: CLIENT_ID
+      value: orchestration-service
+    - name: TZ
+      value: Asia/Kolkata
+    - name: VUNET_DOCKER_HOST
+      valueFrom:
+        fieldRef:
+          fieldPath: spec.nodeName
+    - name: GRAFANA_URL
+      value: http://nairobi:3000
+    - name: GRAFNA_API_KEY
+      value: eyJrIjoiNUhsSVU5aFdnUXowZU9jbm1OaDhxVEJRV3NQT2h3UTciLCJuIjoidnVtb2R1bGUiLCJpZCI6MX0=
+imagePullSecrets:
+  - name: *pullSecretName
+tolerations: *tolerations
+affinity:
+  nodeAffinity: *nodeAffinity
+kubernetesClusterDomain: cluster.local
+vuinterfaceConfig:
+  #Name of the bucket in cold store where the archived data needs to be stored.
+  COLD_STORE_BUCKET_NAME: "hs-archives"
+  DAYS_TO_SYNC_COLD_STORE: "5"
+  #If "False", local minio object store will be used to store the archived data
+  USE_CUSTOM_COLD_STORE: "False"
+  COLD_STORE_ACCESS_POINT: "minio-tenant:9000"
+  #Set the above to 'minio-nfs:9000' when NFS storage is to be for cold tier"
+  COLD_STORE_USE_SECURE: "False"
+  COLD_STORE_CERT_FILE: ""
+  TOTAL_COLD_STORAGE: "12000000"
+  HOT_DISK_NAME: "default"
+  HOT_VOLUME_NAME: "hot_volume"
+  WARM_DISK_NAME: "warm_disk"
+  WARM_VOLUME_NAME: "warm_volume"
+  COLD_STORAGE_DISK_NAME: "archival_disk"
+  #To check whether the cold storage is enabled or not
+  #Update it to "False" in case cold storage is disabled
+  COLD_STORE_ENABLED: "True"
+  #Update the domain name to receive the alert navigation link from alert channels
+  VSMAPS_DOMAIN: "216.48.184.251"
+  # DS
+  DATASTORE_LABEL: "vunet"
+  # Eventcorrelation
+  ENABLE_3T_CORRELATION: "False"
+  HAS_GRPC_SERVER: "False"
+  CORRELATION_ENABLED: "False"
+  CORRELATION_SERVICE_ADDRESS: "dao"
+  ALERT_SERVICE_ADDRESS: "alert"
+  # Hyperscale
+  #Please check Clickhouse/ch-database helm-chart and update HS_DB_HOST to the service name accordingly
+  HS_DB_HOST: clickhouse
+  HS_DB_NAME: vusmart
+  CH_CLUSTER: vusmart
+  # APM
+  APM_DB_HOST: "clickhouse"
+  APM_DB_NAME: "vusmart"
+  # Clickhouse
+  CLICKHOUSE_DB_SERVER: clickhouse
+  CLICKHOUSE_DB_PORT: "9000"
+  # Timescaledb
+  TIMESCALE_DB_PORT: "5432"
+  TIMESCALE_DB_SERVER: timescaledb
+  # Minio
+  MINIO_CONFIG_BUCKET: pipeline-configs
+  MINIO_ACCESS_POINT: minio-tenant:9000
+  MINIO_BUCKET_CONFIG_PATH: /home/vunet/src/denver/rome/utilities/Object_handling/Minio/Minio_bucket_config.json
+  MINIO_FILES_BUCKET: vuml-uploads
+  MINIO_IMAGE_FOLDER: images
+  MINIO_PUBLIC_BUCKET: public
+  # ImportData
+  OBJECT_STORAGE_DETAILS_PATH: "/home/vunet/src/denver/rome/utilities/Object_handling/object_storage_modules_metadata.json"
+  OBJECT_STORAGE_TYPE: "minio"
+  # Mobile app env
+  IDP_ISSUER_ENDPOINT: "/realms/vunet/"
+  IDP_MOBILE_CLIENT_ID: "seoul"
+  # Orchestration
+  ORCHESTRATION_TYPE: "k8s"
+  ORCHESTRATION_CLIENT_ID: orchestration-service
+  # Keycloak
+  # vuSiteManager
+  VUSITE_MANAGER_SERVER: orch-webhook
+  VUSITE_MANAGER_PORT: "8080"
+  # Kubernetes
+  HOST_ENV: kubernetes
+  NAMESPACE: vsmaps
+  AUTH_SERVER_INTROSPECTION_ENDPOINT: https://id.pilot.vunet.io/connect/introspect
+  AUTHORIZATION_ADMIN_SCOPE: vusmartmaps
+  NTP_SYNC_ENABLED: "False"
+  NTP_SERVER: "pool.ntp.org"
+  # Chatbot
+  CHATBOT_ENABLED: "False"
+  # Reports
+  GF_RENDERING_CALLBACK_URL: http://nairobi:3000
+  GF_RENDERING_SERVER_URL: http://renderer:8081/render
+  GF_REPORTING_SERVICE_URL: http://reporter:8686
+  # Denver
+  DENVER_SERVICE_ADDRESS: denver:8882
+  # Kafka
+  KAFKA_PORT: "9092"
+  CONNECT_SERVER: "connect"
+  CONNECT_PORT: "9082"
+  KAFKA_SSL_ENABLED: "False"
+  DAQ_USE_SSL_KAFKA: "False"
+  KAFKA_SERVER: "broker:9092"
+  KAFKA_SSL_SERVER: "broker:9093"
+  KAFKA_SECURITY_PROTOCOL: "SSL"
+  KAFKA_SSL_CHECK_HOSTNAME: "False"
+  KAFKA_SSL_CAFILE: "/home/vunet/encrypt/ca.pem"
+  KAFKA_SSL_CERTFILE: "/home/vunet/encrypt/cert.pem"
+  SQL_SERVER: timescaledb-1
+  SQL_PORT: "5432"
+  REDIS_SERVER: "route"
+  REDIS_PORT: "6379"
+  # Timezone
+  TZ: "Asia/Kolkata"
+  DJANGO_SECRET_KEY: "&e!ohi0+33c11v_5qfm06(vz4n)pcd@oppo2@c+ne4q^g3w@=("
+  GIT_PYTHON_EXECUTABLE: /usr/bin/git
+  GIT_PYTHON_REFRESH: none
+  GRAFANA_URL: http://nairobi:3000
+  GRAFANA_SERVICE_ADDRESS: http://nairobi:3000/vui/api/
+  IDAPI_BASE_URL: http://idapi/idapi/api
+  IDP_BASE_URL: https://34.126.213.95/id
+  IDP_CLIENT_ID: mobileApp
+  IDP_HOSTNAME: pilot.vunet.io
+  VUBLOCK_LIST: "iis log_collector windows_monitor linux_monitor traces rancher kubernetes postgresql mssql keycloak kong_api_gateway redis device_availability task_scheduler tomcat jboss rabbitmq palo_alto_firewall fortinet_firewall cisco_switch snmp_polling ohs url_availability weblogic aws_vpc aws_s3 cisco_router cisco_firewall oracle active_directory aws_elasticache vault azure_eventhub solaris_monitor aws_classic_elb aws_api_gateway aix_monitor ibm_mq mysql nginx jvm_monitor ibm_http_server aws_waf aws_nlb nutanix aws_alb aws_cloudfront aws_route53 f5_load_balancer haproxy ssl_certificate_monitor aws_network_firewall amazon_rds dns_monitoring mongodb windows_event_logs sql_data_collector aws_transit_gateway service_monitor apache gke mariadb syslog microsoft_dfs keydb cassandra hpux_monitor http_poller kafka azure_api_management dell_switch azure_app_gateway ibm_was sftp_monitor browser_rum vsphere radware_load_balancer oci_api_gateway azure_load_balancer synthetic_browser_monitoring apache_hdfs netflow sap_ase azure_firewall checkpoint_firewall kafka_data_collector oke"
+  # System config configurations migrated to environment file
+  CONTAINER_BASED_SETUP: "True"
+  ES_SERVER: "es"
+  ES_PORT: "9200"
+  ELASTIC_SEARCH_VERSION: "7"
+  USE_SSL_ES: "False"
+  ES_SCHEME: "https"
+  ES_SSL_CERT: "mobileApp"
+  ES_SSL_CHECK_HOSTNAME: "False"
+  # Env Variables for the service instance counts
+  VUSNMP_INSTANCES: "1"
+  HEARTBEAT_INSTANCES: "1"
+  VUTELENODE_INSTANCES: "1"
+  VUTELEGRAF_INSTANCES: "1"
+  VUSNMPTRAP_INSTANCES: "1"
+  VUTELEMETRY_INSTANCES: "1"
+  VUSYSLOG_INSTANCES: "1"
+  VUNETFLOW_INSTANCES: "1"
+  VUAPPAGENTTOMCAT_INSTANCES: "1"
+  VUHTTPLISTENER_INSTANCES: "1"
+  VUTRACES_INSTANCES: "1"
+  VURUM_INSTANCES: "1"
+  VU_HTTP_POLLER_INSTANCES: "1"
+  AZURE_METRICS_INSTANCES: "1"
+  TELEGRAF_GENERIC_INSTANCES: "1"
+  OMNI_DCM_INSTANCES: "1"
+  VUDATANODE_TELEGRAF_INSTANCES: "1"
+  VUMETRIC_INSTANCES: "1"
+  ALERT_SVC_COUNT: "1"
+  # Port Related conifgurations
+  NETLOW_LEGACY_PORT: NA
+  NETLOW_PORT: NA
+  SNMP_TRAP_PORT: NA
+  SYSLOG_PORT: NA
+  # Adding PG_USER & PG_PASS to create db_link extension,
+  # as the command requires superuser privileges
+  PG_USER: vusmart
+  PG_PASS: vusmart
+  # Adding Denver & Grafana DB configurations for
+  # bulk-objects-permission functionality
+  DENVER_DB_NAME: vuml_django
+  DENVER_DB_PASS: vusmart
+  DENVER_DB_HOST: timescaledb
+  DENVER_DB_USER: vusmart
+  GRAFANA_DB_NAME: vugrafana
+  GRAFANA_DB_PASS: vusmart
+  GRAFANA_DB_HOST: timescaledb
+  GRAFANA_DB_USER: vusmart
+podSecurityContext:
+  runAsUser: 1000
+  runAsGroup: 1000
+  fsGroup: 1000
+  seccompProfile:
+    type: RuntimeDefault
+  runAsNonRoot: true
+vublockPodSecurityContext:
+  runAsUser: 1002
+  runAsGroup: 1002
+  seccompProfile:
+    type: RuntimeDefault
+  runAsNonRoot: true
+securityContext:
+  privileged: false
+  allowPrivilegeEscalation: false # Prevent privilege escalation
+  capabilities:
+    drop: ["ALL"]
+  readOnlyRootFilesystem: false
+  runAsNonRoot: true
+  seccompProfile:
+    type: RuntimeDefault
+serviceAccount:
+  create: true
+  name: post-job
+  automountServiceAccountToken: false
+postJobResources:
+  requests:
+    memory: 128Mi
+    cpu: 100m
+  limits:
+    memory: 1Gi
+    cpu: 200m

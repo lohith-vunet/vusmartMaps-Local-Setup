@@ -1,0 +1,62 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: "create-topics"
+  labels:
+    app.kubernetes.io/managed-by: {{ .Release.Service | quote }}
+    app.kubernetes.io/instance: {{ .Release.Name | quote }}
+    app.kubernetes.io/version: {{ .Chart.AppVersion | quote }}
+    helm.sh/chart: "{{ .Chart.Name }}-{{ .Chart.Version }}"
+  annotations:
+    # This is what defines this resource as a hook. Without this line, the
+    # job is considered part of the release.
+    "helm.sh/hook": post-install
+    "helm.sh/hook-weight": "-4"
+    "helm.sh/hook-delete-policy": hook-succeeded
+spec:
+  template:
+    metadata:
+      name: "create-topics"
+      labels:
+        app.kubernetes.io/managed-by: {{ .Release.Service | quote }}
+        app.kubernetes.io/instance: {{ .Release.Name | quote }}
+        helm.sh/chart: "{{ .Chart.Name }}-{{ .Chart.Version }}"
+    spec:
+      {{- if .Values.imagePullSecrets }}
+      imagePullSecrets:
+      {{ toYaml .Values.imagePullSecrets | indent 2 }}
+      {{- end }}
+
+      affinity:
+        {{- if .Values.affinity }}
+        {{- include "common.tplvalues.render" (dict "value" .Values.affinity "context" $) | nindent 8 }}
+        {{- end }}
+      tolerations:
+        {{- if .Values.tolerations }}
+        {{- include "common.tplvalues.render" (dict "value" .Values.tolerations "context" $) | nindent 8 }}
+        {{- end }}
+      {{- if .Values.securityContext }}
+      securityContext: {{- toYaml .Values.podSecurityContext | nindent 8 }}
+      {{- end }}
+      restartPolicy: Never
+      containers:
+      - name: post-install-job
+        {{- if .Values.securityContext }}
+        securityContext: {{- toYaml .Values.securityContext | nindent 10 }}
+        {{- end }}
+        env:
+        - name: KAFKA_TOPIC
+          value: "notification product-engagement diagnostics  dcm-stats channel_notification"
+        image: "{{ .Values.repository }}/{{ .Values.name }}:{{ .Values.imageTag }}"
+        imagePullPolicy: "{{ .Values.imagePullPolicy }}"
+        command: ["/bin/bash", "-c", "sleep 60; /home/appuser/create-topics.sh"]
+        volumeMounts:
+          - name: create-topics
+            mountPath: /home/appuser/create-topics.sh
+            subPath: create-topics.sh
+      volumes:
+      - name: create-topics
+        configMap:
+          name: create-topics
+          defaultMode: 0777
+

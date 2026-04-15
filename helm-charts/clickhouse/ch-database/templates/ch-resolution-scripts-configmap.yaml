@@ -1,0 +1,7 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: resolution-scripts
+data:
+{{ (.Files.Glob "scripts/read-only.sh").AsConfig | indent 2 }}
+{{ (.Files.Glob "scripts/stuck_mutation.sh").AsConfig | indent 2 }}

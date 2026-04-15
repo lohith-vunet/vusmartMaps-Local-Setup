@@ -1,0 +1,132 @@
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: alert
+  labels:
+    app: alert
+    managedBy: vunet
+  {{- include "cairo.labels" . | nindent 4 }}
+spec:
+  serviceName: alert
+  replicas: {{ .Values.alert.replicas }}
+  selector:
+    matchLabels:
+      app: alert
+      managedBy: vunet
+      {{- include "cairo.labels" . | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        app: alert
+        managedBy: vunet
+        {{- include "cairo.labels" . | nindent 8 }}
+      annotations:
+        {{- include "cairo.annotations" . | nindent 8 }}
+    spec:
+      tolerations:
+        {{- toYaml .Values.alert.tolerations | nindent 8}}
+      {{- with .Values.alert.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      serviceAccountName: {{ .Values.serviceAccount.name  }}
+      automountServiceAccountToken: {{ .Values.serviceAccount.automountServiceAccountToken }}  
+      {{- if .Values.podSecurityContext }}
+      securityContext: {{- toYaml .Values.podSecurityContext | nindent 8 }}
+      {{- end }}
+      affinity:
+        podAntiAffinity: {{- include "common.affinities.pods" (dict "type" .Values.alert.podAntiAffinityPreset "component" "grafana" "context" $) | nindent 10 }}
+        nodeAffinity: {{- include "common.tplvalues.render" (dict "value" .Values.alert.affinity.nodeAffinity "context" $) | nindent 10 }}
+      containers:
+      - name: alert
+        args: {{- toYaml .Values.alert.args | nindent 8 }}
+        # https://kubernetes.io/docs/tasks/configure-pod-container/configure-liveness-readiness-startup-probes/#configure-probes
+        livenessProbe:
+          exec:
+            command:
+              - /bin/sh
+              - /home/vunet/workspace/cairo/tools/health/vunode_health.sh
+          initialDelaySeconds: 200
+          failureThreshold: 2
+          periodSeconds: 10
+        {{- if .Values.securityContext }}
+        securityContext: {{- toYaml .Values.securityContext | nindent 10 }}
+        {{- end }}
+        env:
+        {{- if .Values.env }}
+        {{- include "common.tplvalues.render" (dict "value" .Values.env "context" $) | nindent 8 }}
+        {{- end }}
+        {{- if .Values.global.extraEnvVars }}
+        {{- include "common.tplvalues.render" (dict "value" (.Values.global.extraEnvVars | default list) "context" $) | nindent 8 }}
+        {{- end }}
+        envFrom:
+        - configMapRef:
+            name: vuinterface-config
+        - secretRef:
+              name: vuinterface-secret
+        image: "{{ .Values.alert.repository }}/{{ .Values.alert.name }}:{{ .Values.alert.tag }}"
+        imagePullPolicy: {{ .Values.alert.pullPolicy }}
+        workingDir: /home/vunet/workspace/cairo
+        {{- if .Values.alert.resources }}
+        resources: {{- toYaml .Values.alert.resources | nindent 12 }}
+        {{- end }}
+        ports:
+        - containerPort: 50052
+        volumeMounts:
+                # - name: ca-vunodes
+                #   mountPath: /etc/ssl/certs/vunet-ca-cert.pem
+                #   subPath: vunet-ca-cert.pem
+        - name: alert-rule-config
+          mountPath: /home/vunet/workspace/cairo/configs/alert_rules.yml
+          subPath: alert_rules.yml
+        - name: vunode-config
+          mountPath: /home/vunet/workspace/cairo/configs/alert-vunode.yml
+          subPath: alert-vunode.yml
+        - name: aws-env
+          mountPath: /home/vunet/.aws/credentials
+          subPath: credentials
+      {{- if .Values.securityContext.readOnlyRootFilesystem }}
+        - name: autoclasses-volume
+          mountPath: /home/vunet/workspace/cairo/pluto/autoclasses/
+        - name: telenode-volume
+          mountPath: /home/vunet/workspace/cairo/pluto/telenode/
+        - name: tmp-volume
+          mountPath: /tmp
+        - name: var-tmp-volume
+          mountPath: /var/tmp
+        - name: vusmartmaps-logs
+          mountPath: /var/log/vusmartmaps/
+        - name: logging-config
+          mountPath: /home/vunet/workspace/cairo/utilities/logging_conf
+      {{- end }}
+      hostname: vunode
+      volumes:
+              # - name: ca-vunodes
+              #   configMap:
+              #   name: ca-vunodes
+      - configMap:
+          name: alert-rule
+        name: alert-rule-config
+      - configMap:
+          name: aws-secrets
+        name: aws-env
+      - configMap:
+          name: alert-vunode-config
+        name: vunode-config
+      {{- if .Values.securityContext.readOnlyRootFilesystem }}
+      - name: autoclasses-volume
+        emptyDir: {}
+      - name: telenode-volume
+        emptyDir: {}
+      - name: tmp-volume
+        emptyDir: {}
+      - name: var-tmp-volume
+        emptyDir: {}
+      - name: vusmartmaps-logs
+        emptyDir: {}
+      - name: logging-config
+        configMap:
+          name: vusoft-logging-conf
+      {{- end }}
+
+  updateStrategy: {}

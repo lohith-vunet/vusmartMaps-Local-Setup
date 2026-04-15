@@ -1,0 +1,14 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: licence-pem
+  namespace: vsmaps # Using your preferred namespace
+data:
+  private.pem: |-
+    {{- range $line :=  $.Files.Lines "files/private.pem" }}
+    {{ $line }}
+    {{- end }}
+  public.pem: |-
+    {{- range $line :=  $.Files.Lines "files/public.pem" }}
+    {{ $line }}
+    {{- end }}

@@ -1,0 +1,76 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: "create-connectors"
+  labels:
+    app.kubernetes.io/managed-by: {{ .Release.Service | quote }}
+    app.kubernetes.io/instance: {{ .Release.Name | quote }}
+    app.kubernetes.io/version: {{ .Chart.AppVersion }}
+    helm.sh/chart: "{{ .Chart.Name }}-{{ .Chart.Version }}"
+  annotations:
+    # This is what defines this resource as a hook. Without this line, the
+    # job is considered part of the release.
+    "helm.sh/hook": post-install
+    "helm.sh/hook-weight": "-5"
+    "helm.sh/hook-delete-policy": hook-succeeded
+spec:
+  template:
+    metadata:
+      name: "create-connectors"
+      labels:
+        app.kubernetes.io/managed-by: {{ .Release.Service | quote }}
+        app.kubernetes.io/instance: {{ .Release.Name | quote }}
+        helm.sh/chart: "{{ .Chart.Name }}-{{ .Chart.Version }}"
+    spec:
+      serviceAccountName: {{ .Values.serviceAccount.name  }}
+      automountServiceAccountToken: {{ .Values.serviceAccount.automountServiceAccountToken }}  #Disable SA token auto-mount
+      {{- if .Values.podSecurityContext }}
+      securityContext: {{- toYaml .Values.podSecurityContext | nindent 8 }}
+      {{- end }}
+      affinity:
+        podAntiAffinity:
+        {{- with .Values.affinity.nodeAffinity }}
+        nodeAffinity:
+          {{- toYaml . | nindent 10 }}
+        {{- end }}
+      {{- with .Values.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      restartPolicy: Never
+      containers:
+      - name: post-job-create-connectors
+        {{- if .Values.securityContext }}
+        securityContext: {{- toYaml .Values.securityContext | nindent 10 }}
+        {{- end }}
+        resources: {{- toYaml .Values.postJobResources | nindent 12 }}
+        env:
+        {{- if .Values.cairo.extraEnvVars }}
+        {{- include "common.tplvalues.render" (dict "value" .Values.cairo.extraEnvVars "context" $) | nindent 8 }}
+        {{- end }}
+        envFrom:
+        - configMapRef:
+            name: postjob-config
+        - secretRef:
+            name: postjob-secret
+        image: {{ .Values.cairo.image.repository }}/{{ .Values.cairo.image.name }}:{{ .Values.cairo.image.tag
+          | default .Chart.AppVersion }}
+        imagePullPolicy: {{ .Values.cairo.image.pullPolicy }}
+        command: ["/bin/bash", "-c", "cd /home/vunet/workspace/connectors; bash kafka_setup.sh connect"]
+        volumeMounts:
+          - name: connect-configs
+            mountPath: /home/vunet/workspace/connectors
+      volumes:
+        - name: connect-configs
+          configMap:
+            name: connector-configs
+            defaultMode: 0777
+            items:
+              - key: kafka_setup.sh
+                path: kafka_setup.sh
+              - key: enrichment.json
+                path: enrichment.json

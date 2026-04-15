@@ -1,0 +1,150 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: vublock
+  labels:
+    app: vublock
+    managedBy: vunet
+  {{- include "cairo.labels" . | nindent 4 }}
+spec:
+  replicas: {{ .Values.vublock.replicas }}
+  selector:
+    matchLabels:
+      app: vublock
+      managedBy: vunet
+      {{- include "cairo.labels" . | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        app: vublock
+        managedBy: vunet
+        {{- include "cairo.labels" . | nindent 8 }}
+      annotations:
+        {{- include "cairo.annotations" . | nindent 8 }}
+    spec:
+      {{- with .Values.vublock.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.vublock.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      serviceAccountName: {{ .Values.serviceAccount.name  }}
+      automountServiceAccountToken: {{ .Values.serviceAccount.automountServiceAccountToken }} #Disable SA token auto-mount
+      {{- if .Values.podSecurityContext }}
+      securityContext: {{- toYaml .Values.podSecurityContext | nindent 8 }}
+      {{- end }}
+      affinity:
+        podAntiAffinity: {{- include "common.affinities.pods" (dict "type" .Values.vublock.podAntiAffinityPreset "component" "grafana" "context" $) | nindent 10 }}
+
+        {{- with .Values.vublock.affinity.nodeAffinity }}
+        nodeAffinity:
+            {{- toYaml . | nindent 10 }}
+        {{- end }}
+      containers:
+      - name: vublock
+        args: {{- toYaml .Values.vublock.args | nindent 8 }}
+      # https://kubernetes.io/docs/tasks/configure-pod-container/configure-liveness-readiness-startup-probes/#configure-probes
+        # Create a comma separated string with all enabled celery queue
+        {{- $celeryList := "" }}
+        {{- range $key, $value := .Values.vublock.celery }}
+          {{- if $value.enable }}
+            {{- $queueName := "" }}
+            {{- if or (eq $key "vublock-config") (eq $key "vublock-configuration") }}
+            {{- $queueName = "vublock_config_queue" }}
+            {{- else if or (eq $key "vublock-diag") (eq $key "vublock-diagnostics") (eq $key "vublock-diagnostic") }}
+            {{- $queueName = "vublock_diagnostic_queue" }}
+            {{- end }}
+            {{- if ne $queueName "" }}
+            {{- if eq $celeryList "" }}
+              {{- $celeryList = printf "%s" $queueName }}
+            {{- else }}
+              {{- $celeryList = printf "%s,%s" $celeryList $queueName }}
+            {{- end }}
+            {{- end }}
+          {{- end }}
+        {{- end }}
+        {{- $healthScript := "/home/vunet/workspace/cairo/tools/health/vunode_health.sh" }}
+        {{- if $celeryList }}
+          {{- $healthScript = printf "%s --check-celery %s" $healthScript $celeryList }}
+        {{- end }}
+        livenessProbe:
+          exec:
+            command:
+              - /bin/sh
+              - -c
+              - {{ $healthScript }} >&2
+          initialDelaySeconds: 200
+          failureThreshold: 2
+          periodSeconds: 10
+        {{- if .Values.securityContext }}
+        securityContext: {{- toYaml .Values.securityContext | nindent 10 }}
+        {{- end }}
+        env:
+        {{- if .Values.global.extraEnvVars }}
+        {{- include "common.tplvalues.render" (dict "value" .Values.global.extraEnvVars "context" $) | nindent 8 }}
+        {{- end }}
+        envFrom:
+        - configMapRef:
+            name: vuinterface-config
+        - secretRef:
+              name: vuinterface-secret
+        image: {{ .Values.vublock.repository }}/{{ .Values.vublock.name }}:{{ .Values.vublock.tag
+          | default .Chart.AppVersion }}
+        imagePullPolicy: {{ .Values.vublock.pullPolicy }}
+        workingDir: /home/vunet/workspace/cairo
+        {{- if .Values.vublock.resources }}
+        resources: {{- toYaml .Values.vublock.resources | nindent 12 }}
+        {{- end }}
+        ports:
+        volumeMounts:
+                # - name: ca-vunodes
+                #   mountPath: /etc/ssl/certs/vunet-ca-cert.pem
+                #   subPath: vunet-ca-cert.pem
+        - name: vublock-vunode-config
+          mountPath: /home/vunet/workspace/cairo/configs/vunode_config.yml
+          subPath: vunode_config.yml
+        - name: aws-env
+          mountPath: /home/vunet/.aws/credentials
+          subPath: credentials
+      {{- if .Values.securityContext.readOnlyRootFilesystem }}
+        - name: autoclasses-volume
+          mountPath: /home/vunet/workspace/cairo/pluto/autoclasses/
+        - name: telenode-volume
+          mountPath: /home/vunet/workspace/cairo/pluto/telenode/
+        - name: tmp-volume
+          mountPath: /tmp
+        - name: vusmartmaps-logs
+          mountPath: /var/log/vusmartmaps/
+        - name: templates-volume
+          mountPath: /home/vunet/workspace/cairo/mickey/vusoft/vumap/vublock/configuration/templates
+        - name: logging-config
+          mountPath: /home/vunet/workspace/cairo/utilities/logging_conf
+      {{- end }}
+      hostname: vunode
+      volumes:
+              #- name: ca-vunodes
+              #  configMap:
+              #  name: ca-vunodes
+      - configMap:
+          name: aws-secrets
+        name: aws-env
+      - configMap:
+          name: vublock-vunode-config
+        name: vublock-vunode-config
+      {{- if .Values.securityContext.readOnlyRootFilesystem }}
+      - name: autoclasses-volume
+        emptyDir: {}
+      - name: telenode-volume
+        emptyDir: {}
+      - name: tmp-volume
+        emptyDir: {}
+      - name: vusmartmaps-logs
+        emptyDir: {}
+      - name: templates-volume
+        emptyDir: {}
+      - name: logging-config
+        configMap:
+          name: vusoft-logging-conf
+      {{- end }}

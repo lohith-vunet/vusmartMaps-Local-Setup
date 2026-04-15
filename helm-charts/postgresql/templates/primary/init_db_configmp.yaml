@@ -1,0 +1,15 @@
+apiVersion: v1
+data:
+  03_init-db.sh: |
+    #!/bin/bash
+    set -e
+
+    psql -U$POSTGRES_USER < /db/user.sql
+    psql -U$POSTGRES_USER -d multicore < /db/datadump.sql
+kind: ConfigMap
+metadata:
+  name: init-db-sh
+  namespace: {{ .Release.Namespace | quote }}
+  {{- if .Values.commonAnnotations }}
+  annotations: {{- include "common.tplvalues.render" ( dict "value" .Values.commonAnnotations "context" $ ) | nindent 4 }}
+  {{- end }}

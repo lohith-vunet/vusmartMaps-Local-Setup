@@ -1,0 +1,208 @@
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  # nodes would be named as clickhouse-keeper-0, clickhouse-keeper-1, clickhouse-keeper-2
+  name: {{ include "clickhouse-keeper.fullname" . }}
+  labels:
+    {{- include "clickhouse-keeper.labels" . | nindent 4 }}
+spec:
+  selector:
+    matchLabels:
+      {{- include "clickhouse-keeper.selectorLabels" . | nindent 6 }}
+  serviceName: {{ include "clickhouse-keeper.fullname" . }}-hl
+  replicas: {{ .Values.replicaCount }}
+  updateStrategy:
+    type: RollingUpdate
+  podManagementPolicy: Parallel
+  template:
+    metadata:
+      labels:
+        {{- include "clickhouse-keeper.selectorLabels" . | nindent 8 }}
+      annotations:
+        {{- include "cairo.annotations" . | nindent 8 }}
+    spec:
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- if .Values.podSecurityContext }}
+      securityContext: {{- toYaml .Values.podSecurityContext | nindent 8 }}
+      {{- end }}
+      serviceAccountName: {{ .Values.serviceAccount.name  }}
+      automountServiceAccountToken: {{ .Values.serviceAccount.automountServiceAccountToken }}  #Disable SA token auto-mount
+      {{- if .Values.tolerations }}
+      tolerations: {{- include "common.tplvalues.render" (dict "value" .Values.tolerations "context" $) | nindent 8 }}
+      {{- end }}
+      affinity:
+        {{- if .Values.affinity }}
+        nodeAffinity: {{- include "common.tplvalues.render" (dict "value" .Values.affinity.nodeAffinity "context" $) | nindent 10 }}
+        {{- end }}
+        podAntiAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            - labelSelector:
+                matchExpressions:
+                  - key: "app"
+                    operator: In
+                    values:
+                      - clickhouse-keeper
+              topologyKey: "kubernetes.io/hostname"
+      volumes:
+        - name: clickhouse-keeper-settings
+          configMap:
+            name: {{ include "clickhouse-keeper.fullname" . }}-settings
+            items:
+              - key: keeper_config.xml
+                path: keeper_config.xml
+        {{- if .Values.secure }}
+        - name: ssl-certs
+          secret:
+            secretName: secret-certs
+        {{- end }}
+        {{- if .Values.securityContext.readOnlyRootFilesystem }}
+        - name: tmp
+          emptyDir: {}
+        {{- end }}
+      containers:
+        - name: clickhouse-keeper
+          imagePullPolicy: IfNotPresent
+          image: {{ .Values.image.repository }}/{{ .Values.image.name }}:{{ .Values.image.tag | default .Chart.AppVersion }}
+          {{- if .Values.securityContext }}
+          securityContext: {{- toYaml .Values.securityContext | nindent 12 }}
+          {{- end }}            
+          {{- if .Values.resources }}
+          resources: {{- toYaml .Values.resources | nindent 12 }}
+          {{- end }}
+          volumeMounts:
+            - name: clickhouse-keeper-settings
+              mountPath: /etc/clickhouse-keeper/
+            - name: clickhouse-keeper-datadir-volume
+              mountPath: /var/lib/clickhouse-keeper
+            {{- if .Values.secure }}
+            - name: ssl-certs
+              mountPath: /etc/clickhouse-keeper/secrets.d
+            {{- end }}
+          {{- if .Values.securityContext.readOnlyRootFilesystem }}
+            - name: tmp
+              mountPath: /tmp/clickhouse-keeper/
+          {{- end }}
+          env:
+            - name: SERVERS
+              value: {{ .Values.replicaCount | quote }}
+            - name: RAFT_PORT
+              value: "9444"
+            - name: SECURE
+              value: {{ .Values.secure | quote }}
+          command:
+            - bash
+            - -x
+            - -c
+            - |
+              if [[ $SECURE = 'true' ]]; then
+                  apk add -q --no-progress openssl
+              fi &&
+              HOST=`hostname -s` &&
+              DOMAIN=`hostname -d` &&
+              if [[ $HOST =~ (.*)-([0-9]+)$ ]]; then
+                  NAME=${BASH_REMATCH[1]}
+                  ORD=${BASH_REMATCH[2]}
+              else
+                  echo "Failed to parse name and ordinal of Pod"
+                  exit 1
+              fi &&
+              export MY_ID=$((ORD+1)) &&
+              mkdir -p /tmp/clickhouse-keeper/config.d/ &&
+              {
+                echo "<yandex><keeper_server>"
+                echo "<server_id>${MY_ID}</server_id>"
+                echo "<raft_configuration>"
+                echo "<secure>${SECURE}</secure>"
+                for (( i=1; i<=$SERVERS; i++ )); do
+                    echo "<server><id>${i}</id><hostname>$NAME-$((i-1)).${DOMAIN}</hostname><port>${RAFT_PORT}</port></server>"
+                done
+                echo "</raft_configuration>"
+                echo "</keeper_server></yandex>"
+              } > /tmp/clickhouse-keeper/config.d/generated-keeper-settings.xml &&
+              cat /tmp/clickhouse-keeper/config.d/generated-keeper-settings.xml &&
+              if [[ "1" == "$MY_ID" ]]; then
+                clickhouse-keeper --config-file=/etc/clickhouse-keeper/keeper_config.xml --force-recovery
+              else
+                clickhouse-keeper --config-file=/etc/clickhouse-keeper/keeper_config.xml
+              fi
+          livenessProbe:
+            exec:
+              command:
+                - bash
+                - -xc
+                {{- if .Values.secure }}
+                - 'date && echo "ruok" | timeout 15 openssl s_client -quiet -crlf -connect 127.0.0.1:2181 | grep imok'
+                {{- else }}
+                - 'date && OK=$(exec 3<>/dev/tcp/127.0.0.1/2181 ; printf "ruok" >&3 ; IFS=; tee <&3; exec 3<&- ;); if [[ "$OK" == "imok" ]]; then exit 0; else exit 1; fi'
+                {{- end }}
+            initialDelaySeconds: 20
+            timeoutSeconds: 15
+          ports:
+            - containerPort: 7000
+              name: prometheus
+            - containerPort: 9444
+              name: raft
+            - containerPort: 2181
+              name: client                
+  volumeClaimTemplates:
+    - metadata:
+        name: "clickhouse-keeper-datadir-volume"
+        {{- if .Values.persistence.annotations }}
+        annotations:
+        {{- toYaml .Values.persistence.annotations | nindent 8 }}
+        {{- end }}
+      spec:
+        accessModes:
+        {{- range .Values.persistence.accessModes }}
+        - {{ . | quote }}
+        {{- end }}
+        resources:
+          requests:
+            {{- if .Values.pvMapping }} 
+            storage: "{{ .Values.persistence.host.dataDirSize }}"
+            {{- else if .Values.persistence.default.enabled }}
+            storage: "{{ .Values.persistence.default.dataDirSize }}"
+            {{- else if .Values.persistence.defaultReplica.enabled }}
+            storage: "{{ .Values.persistence.defaultReplica.dataDirSize }}"
+            {{- else if .Values.persistence.hot.enabled }}
+            storage: "{{ .Values.persistence.hot.dataDirSize }}"
+            {{- else if .Values.persistence.warm.enabled }}
+            storage: "{{ .Values.persistence.warm.dataDirSize }}"
+            {{- else if .Values.persistence.cold.enabled }}
+            storage: "{{ .Values.persistence.cold.dataDirSize }}"
+            {{- else if .Values.persistence.host.enabled }}
+            storage: "{{ .Values.persistence.host.dataDirSize }}"
+            {{- else }}
+            storage: "{{ .Values.persistence.data.size }}"
+            {{- end }}
+        {{- if .Values.pvMapping }} 
+        storageClassName: local-storage
+        {{- else if .Values.persistence.default.enabled }}
+        storageClassName: "{{ .Values.persistence.default.storageClass }}"
+        {{- else if .Values.persistence.defaultReplica.enabled }}
+        storageClassName: "{{ .Values.persistence.defaultReplica.storageClass }}"
+        {{- else if .Values.persistence.hot.enabled }}
+        storageClassName: "{{ .Values.persistence.hot.storageClass }}"
+        {{- else if .Values.persistence.warm.enabled }}
+        storageClassName: "{{ .Values.persistence.warm.storageClass }}"
+        {{- else if .Values.persistence.cold.enabled }}
+        storageClassName: "{{ .Values.persistence.cold.storageClass }}"
+        {{- else if .Values.persistence.host.enabled }}
+        storageClassName: "{{ .Values.persistence.host.storageClass }}"
+        {{- else if .Values.persistence.data.storageClass }}
+        storageClassName: "{{ .Values.persistence.data.storageClass }}"
+        {{- else }}
+        storageClassName: ""
+        {{- end }}
+        {{- if .Values.persistence.selector }}
+        selector: {{- include "common.tplvalues.render" (dict "value" .Values.persistence.selector "context" $) | nindent 8 }}
+        {{- else if .Values.persistence.existingVolume }}
+        selector:
+          matchLabels:
+            volume: {{ .Values.persistence.existingVolume }}
+        {{- end }}
+        {{- include "common.storage.class" (dict "persistence" .Values.persistence "global" .Values.global) | nindent 8 }}
+

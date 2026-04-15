@@ -1,0 +1,8 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "denver.fullname" . }}-dbini-config
+  labels:
+  {{- include "denver.labels" . | nindent 4 }}
+data:
+  db.ini: {{ .Values.dbiniConfig.dbIni | toYaml | indent 1 }}

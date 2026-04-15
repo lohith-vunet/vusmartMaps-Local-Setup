@@ -1,0 +1,33 @@
+{{- if .Values.pvMapping }}
+{{- $namespace := .Release.Namespace }}
+{{range $i, $e := .Values.pvMapping}}
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: {{$i}}-pv
+  annotations:
+    helm.sh/resource-policy: keep
+spec:
+  capacity:
+    storage: "{{ $.Values.persistence.host.dataDirSize }}"
+  volumeMode: Filesystem
+  accessModes:
+    - ReadWriteOnce
+  persistentVolumeReclaimPolicy: Retain
+  storageClassName: {{ $e.storageClass }} 
+  local:
+    path: {{ $e.hostPath }}/{{ $e.dirPath }}
+  nodeAffinity:
+    required:
+      nodeSelectorTerms:
+        - matchExpressions:
+            - key: kubernetes.io/hostname
+              operator: In
+              values:
+                - "kind-control-plane"
+  claimRef:
+    name: "{{$i}}" 
+    namespace: {{ $namespace }}
+---
+{{- end }}
+{{- end }}

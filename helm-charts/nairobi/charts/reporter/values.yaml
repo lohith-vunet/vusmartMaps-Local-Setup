@@ -1,0 +1,110 @@
+# vulauncher will update this section while deployment
+vunet:
+  imageServer: &imageServer ghcr.io
+  imageName: &imageName vunetsystems/canberra
+  imageTag: &imageTag 89
+  # cpu and memory min and max values
+  resources: &resources
+    limits:
+      cpu: "0.3"
+      memory: 2Gi
+    requests:
+      cpu: "0.2"
+      memory: 500Mi
+  # priority node labels
+  nodeAffinity: &nodeAffinity {}
+  # tolerations
+  tolerations: &tolerations []
+  # number of pods to run
+  replicas: &replicas 1
+  # pvc size that will be claimed. For nairobi, we will use default storage
+  # others will have zero values.
+  hot:
+    size: &hotSize ""
+    enabled: &hotEnabled false
+    encrypted: &hotEncrypted false
+    storageclass: &hotStorageClass ""
+  warm:
+    size: &warmSize ""
+    enabled: &warmEnabled false
+    encrypted: &warmEncrypted false
+    storageclass: &warmStorageClass ""
+  cold:
+    size: &coldSize ""
+    enabled: &coldEnabled false
+    encrypted: &coldEncrypted false
+    storageclass: &coldStorageClass ""
+  default:
+    size: &defaultSize ""
+    enabled: &defaultEnabled false
+    encrypted: &defaultEncrypted false
+    storageclass: &defaultStorageClass ""
+  default-replica:
+    size: &defaultReplicaSize ""
+    enabled: &defaultReplicaEnabled false
+    encrypted: &defaultReplicaEncrypted false
+    storageclass: &defaultReplicaStorageClass ""
+  host:
+    size: &hostSize ""
+    enabled: &hostEnabled false
+    encrypted: &hostEncrypted false
+    storageclass: &hostStorageClass ""
+  # ghcr credentials
+  pullSecretName: &pullSecretName ghcr-login-secret
+  # loadbalancer IP information
+  loadbalancer: &loadbalancer []
+  #
+  # dependencies will be list of helm chart path, which would be required for the current
+  # chart. We will install its dependant helm charts first, then current helm chart
+  # will be installed
+  dependencies: []
+replicaCount: *replicas
+securityContext:
+  privileged: false
+  allowPrivilegeEscalation: false # Prevent privilege escalation
+  capabilities:
+    drop: ["ALL"]
+  readOnlyRootFilesystem: false
+  runAsNonRoot: true
+  seccompProfile:
+    type: RuntimeDefault
+podSecurityContext:
+  fsGroup: 1000
+  runAsUser: 1000
+  runAsGroup: 1000
+  runAsNonRoot: true
+  seccompProfile:
+    type: RuntimeDefault
+serviceAccount:
+  create: true
+  name: reporter
+  automountServiceAccountToken: false
+annotations:
+  apparmor.security.beta.kubernetes.io/pod: runtime/default
+imagePullSecrets:
+  - name: *pullSecretName
+address:
+  private: "traefik/vui"
+  proto: "https://"
+maxWorkers: "5"
+reporterimage:
+  repository: *imageServer
+  name: *imageName
+  tag: *imageTag
+  pullPolicy: IfNotPresent
+restartPolicy: Always
+strategy:
+  type: RollingUpdate
+  maxSurge: 1
+  maxUnavailable: 0
+reporter:
+  podAntiAffinityPreset: "hard"
+  affinity:
+    nodeAffinity: *nodeAffinity
+  resources: *resources
+  tolerations: *tolerations
+reporterservice:
+  name: reporter
+  port: 8686
+  targetPort: 8686
+  appLabel: reporter

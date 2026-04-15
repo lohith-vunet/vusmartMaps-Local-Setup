@@ -1,0 +1,226 @@
+# vulauncher will update this section while deployment
+vunet:
+  imageServer: &imageServer ghcr.io
+  imageName: &imageName vunetsystems/denver
+  imageTag: &imageTag 2.16.35
+  # cpu and memory min and max values
+  resources: &resources
+    limits:
+      cpu: "0.5"
+      memory: 4Gi
+    requests:
+      cpu: "0.3"
+      memory: 500Mi
+  # priority node labels
+  nodeAffinity: &nodeAffinity {}
+  # tolerations
+  tolerations: &tolerations []
+  # number of pods to run
+  replicas: &replicas 1
+  hot:
+    size: &hotSize ""
+    enabled: &hotEnabled false
+    encrypted: &hotEncrypted false
+    storageclass: &hotStorageClass ""
+  warm:
+    size: &warmSize ""
+    enabled: &warmEnabled false
+    encrypted: &warmEncrypted false
+    storageclass: &warmStorageClass ""
+  cold:
+    size: &coldSize ""
+    enabled: &coldEnabled false
+    encrypted: &coldEncrypted false
+    storageclass: &coldStorageClass ""
+  default:
+    size: &defaultSize ""
+    enabled: &defaultEnabled false
+    encrypted: &defaultEncrypted false
+    storageclass: &defaultStorageClass ""
+  default-replica:
+    size: &defaultReplicaSize ""
+    enabled: &defaultReplicaEnabled false
+    encrypted: &defaultReplicaEncrypted false
+    storageclass: &defaultReplicaStorageClass ""
+  host:
+    size: &hostSize ""
+    enabled: &hostEnabled false
+    encrypted: &hostEncrypted false
+    storageclass: &hostStorageClass ""
+  # ghcr credentials
+  pullSecretName: &pullSecretName ghcr-login-secret
+  #
+  # dependencies will be list of helm chart path, which would be required for the current
+  # chart. We will install its dependant helm charts first, then current helm chart
+  # will be installed
+  dependencies:
+    - "keycloak"
+    - "postgresql"
+securityContext:
+  privileged: false
+  allowPrivilegeEscalation: false # Prevent privilege escalation
+  capabilities:
+    drop: ["ALL"]
+  readOnlyRootFilesystem: true
+  runAsNonRoot: true
+  seccompProfile:
+    type: RuntimeDefault
+podSecurityContext:
+  fsGroup: 1000
+  runAsUser: 1000
+  runAsGroup: 1000
+  runAsNonRoot: true
+  seccompProfile:
+    type: RuntimeDefault
+serviceAccount:
+  create: true
+  name: denver
+  automountServiceAccountToken: false
+kubectlResources:
+  requests:
+    cpu: "50m"
+    memory: "100Mi"
+  limits:
+    cpu: "100m"
+    memory: "200Mi"
+dbiniConfig:
+  dbIni: |-
+    [timescaledbql_vuml]
+    host = timescaledb-1
+    dbname = vuml_django
+    user = vusmart
+    password = vusmart
+    [internal_db]
+    host = timescaledb-1
+    port = 5432
+    user = vusmart
+    password = vusmart
+    dbname = vuml_django
+    [rca_bot_related_db_creds]
+    host = timescaledb-1
+    port = 5432
+    dbname = vuml34
+    user = vusmart
+    password = vusmart
+    [fileupload_db]
+    host = timescaledb-1
+    port = 5432
+    user = vusmart
+    password = vusmart
+    dbname = vuml_uploads
+    [multicore_db]
+    host = timescaledb-1
+    port = 5432
+    user = vusmart
+    password = vusmart
+    dbname = multicore
+    [dataex_psql_db]
+    host = timescaledb-1
+    port = 5432
+    user = vusmart
+    password = vusmart
+    dbname = upi_journey
+posthook:
+  repository: *imageServer
+  imageName: vunetsystems/kubectl
+  imageTag: v2.15.0
+resources: *resources
+#requests:
+#  cpu: "100m"
+#  memory: "50Mi"
+#limits:
+#  cpu: "300m"
+#  memory: "150Mi"
+
+affinity:
+  nodeAffinity: *nodeAffinity
+tolerations: *tolerations
+imagePullSecrets:
+  - name: *pullSecretName
+denver:
+  replicas: *replicas
+  denver:
+    args:
+      - /bin/bash
+      - -c
+      - gunicorn --bind 0.0.0.0:8882 --timeout 850 --workers 10   --max-requests 1000 --max-requests-jitter 2000 --keep-alive 7 vuml_backend.wsgi
+    image:
+      repository: *imageServer
+      name: *imageName
+      tag: *imageTag
+  denverMigrate:
+    args:
+      - /opt/app-root/bin/python
+      - manage.py
+      - migrate
+    image:
+      repository: *imageServer
+      name: *imageName
+      tag: *imageTag
+  expose: false
+  ports:
+    - name: denver-svc
+      port: 8882
+      targetPort: 8882
+  type: ClusterIP
+envConfig:
+  #SSL Variables
+  #SSL_CERT_FILE: "/etc/ssl/certs/vunet-ca-cert.pem"
+  #MINIO_SECURE: "False"
+  #MINIO_ACCESS_POINT: "minio.vsmaps.svc:443"
+  #Import Data
+  OBJECT_STORAGE_DETAILS_PATH: "/home/vunet/src/denver/rome/utilities/Object_handling/object_storage_modules_metadata.json"
+  MINIO_BUCKET_CONFIG_PATH: "/home/vunet/src/denver/rome/utilities/Object_handling/Minio/Minio_bucket_config.json"
+  OBJECT_STORAGE_TYPE: "minio"
+  MINIO_SECURE: "False"
+  MINIO_ACCESS_POINT: "minio-tenant:9000"
+  MINIO_FILES_BUCKET: "vuml-uploads"
+  MINIIO_CONFIG_BUCKET: "pipeline-configs"
+  EVENT_CORR_APP_CODE: "ECSS"
+  EMBEDDING_SERVICE_URL: "http://vserv:8000/get_raw_embeddings"
+  AIRFLOW_ENDPOINT: "http://airflow-webserver:8000/"
+  ALR_BASE_FILE_PATH: "/home/vunet/vuML/denver/alr/parser/"
+  ALR_DEPTH: "6"
+  ALR_FILENAME: "ALR_commandline.py"
+  ALR_GROK_FILEPATH: "/home/vunet/vuML/denver/alr/parser/grok_labels.csv"
+  ALR_LOG_FILES_PATH: "/data/vusmartmaps/vunet/denver/uploaded_files"
+  ALR_LOGS_OUTPUT_DIR: "/data/vusmartmaps/vunet/denver/uploaded_files"
+  ALR_SIMILAR_THRESHOLD: "0.5"
+  ALR_TUNING: "MT"
+  ALR_VENV_PATH: "/home/vunet/ALR/ALRenv"
+  BASE_DAG_FILE_PATH: "/home/vunet/airflow/dags"
+  CODE_ROOT: "/home/vunet/vuML/denver"
+  DASHBOARDS_TEMPLATE_PATH: "/home/vunet/vuML/denver/data_orchestration/grafana-dashboards/"
+  DATAMODEL_PROXYSTORE_DIR: proxy-store/data-extraction/
+  DEBUG: "0"
+  GRAFANA_SERVICE_ADDRESS: "http://nairobi:3000/vui/api/"
+  GRAFANA_URL: "http://nairobi:3000/vui"
+  IDP_INTROSPECT_URL: "http://id/id/connect/introspect"
+  IDP_URL: "http://idapi/idapi/api"
+  LOG_FILES_PATH: "/data/vusmartmaps/vunet/vuML/log_files"
+  MLFLOW_TRACKING_URI: "http://mlflow:5000"
+  PIPELINE_CONFIG_PATH: pipeline_configs
+  POSTGRES_DB: "vuml_django"
+  POSTGRES_HOST: "timescaledb-1"
+  POSTGRES_PORT: "5432"
+  POSTGRES_USER: "vusmart"
+  PYTHONPATH: "/home/vunet/src/denver/rome"
+  RCA_BOT_CLEAR_API_URL: "http://denver:8882/api/vuaccel/incidents/update/status/"
+  RCABOT_NOTIFICATION_RECIPIENTS: '{"slack":["channel-1", "channel-2"]}'
+  RESOURCE_SERVER_INTROSPECTION_USERNAME: "vusmartmaps"
+  ROME_PATH: "/home/vunet/src/denver/rome"
+  SUMMARY_TYPE: "text_rank"
+  TIMESTAMP_FILE_PATH: "/home/vunet/vuML/denver/alr/parser/timestamp_regex.csv"
+  TZ: "UTC"
+  DATASTORE_LABEL: "vunet"
+  # `env` toggles to enable/disable and configure
+  # instrumentation for the service
+  # By default, instrumentation is disabled.
+  OTEL_SDK_DISABLED: "True"
+  OTEL_EXPORTER_ENDPOINT: ""
+  OTEL_TRACING_EXPORTERS: ""
+  OTEL_TRACING_INSTRUMENTORS: ""
+  OTEL_METRICS_EXPORTERS: ""
+  OTEL_METRICS_INSTRUMENTORS: ""
+  OTEL_PYTHON_EXCLUDED_URLS: ""
+kubernetesClusterDomain: cluster.local

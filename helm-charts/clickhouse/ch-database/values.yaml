@@ -1,0 +1,384 @@
+# vulauncher will update this section while deployment
+vunet:
+  # docker image information about clickhouse database
+  imageServer: &imageServer ghcr.io
+  imageName: &imageName "vunetsystems/clickhouse-server"
+  imageTag: &imageTag "25.3"
+  # cpu and memory min and max values
+  resources: &resources
+    limits:
+      cpu: "4"
+      memory: 6Gi
+    requests:
+      cpu: "2"
+      memory: 500Mi
+  # priority node labels
+  nodeAffinity: &nodeAffinity {}
+  # tolerations
+  tolerations: &tolerations []
+  # number of pods to run. This will correspond to shard count
+  replicas: &replicas 1
+  # pvc size that will be claimed. For clickhouse database, we will use hot and warm storage
+  # others will have zero values.
+  hot:
+    size: &hotSize ""
+    enabled: &hotEnabled false
+    encrypted: &hotEncrypted false
+    storageclass: &hotStorageClass ""
+  warm:
+    size: &warmSize ""
+    enabled: &warmEnabled false
+    encrypted: &warmEncrypted false
+    storageclass: &warmStorageClass ""
+  cold:
+    size: &coldSize ""
+    enabled: &coldEnabled false
+    encrypted: &coldEncrypted false
+  default:
+    size: &defaultSize ""
+    enabled: &defaultEnabled false
+    encrypted: &defaultEncrypted false
+    storageclass: &defaultStorageClass ""
+  default-replica:
+    size: &defaultReplicaSize ""
+    enabled: &defaultReplicaEnabled false
+    encrypted: &defaultReplicaEncrypted false
+    storageclass: &defaultReplicaStorageClass ""
+  host:
+    size: &hostSize 5Gi
+    encrypted: &hostEncrypted false
+  # ghcr credentials
+  pullSecretName: &pullSecretName ghcr-login-secret
+  #
+  # dependencies will be list of helm chart path, which would be required for the current
+  # chart. We will install its dependant helm charts first, then current helm chart
+  # will be installed
+  dependencies:
+    - "ch-keeper"
+    - "ch-operator"
+    - "longhorn"
+    - "minio-tenant"
+# Default values for clickhouse-db.
+# This is a YAML-formatted file.
+# Declare variables to be passed into your templates.
+
+clusterName: vusmart
+clusterService: clickhouse
+chPort: "9000"
+archivalPort: "7171"
+shardCount: *replicas
+replicaCount: 1
+env: {}
+secrets:
+  access_key: bWluaW8=
+  secret_key: bWluaW8xMjM=
+image:
+  repository: *imageServer
+  name: *imageName
+  pullPolicy: IfNotPresent
+  # Overrides the image tag whose default is the chart appVersion.
+  tag: *imageTag
+# kubernetes secret name used to pull docker image
+imagePullSecrets:
+  - name: *pullSecretName
+# node Affinity as per vunet section
+nodeAffinity: *nodeAffinity
+host:
+  enabled: true
+# persistence will have the storage related information.
+# - if hot is enabled, then we will use it for hot data tier, if not we will use defaultHot for
+#   hot tier
+# - if warm is enabled then we will use it for warm data tier, if not we will use defaultWarm for
+#   warm tier
+persistence:
+  key: YmU1OTU1NDBjMjRkZWU5OWEwODQ2ZDFmN2RmZDg1YWM=
+  #
+  # default hot will be used, when hot tier is not found
+  defaultHot:
+    enabled: *defaultEnabled
+    encrypted: *defaultEncrypted
+    path: /var/lib/clickhouse/
+    storageRequest: *defaultSize
+    storageClass: *defaultStorageClass
+  #
+  # defaultWarm will be used when warm tier is not found
+  defaultWarm:
+    enabled: *defaultEnabled
+    encrypted: *defaultEncrypted
+    path: /var/lib/clickhouse-warm/
+    storageRequest: *defaultSize
+    storageClass: *defaultStorageClass
+  #
+  # hot will be used if we had specified hot storageClass in sizing file for clickhouse
+  hot:
+    enabled: *hotEnabled
+    encrypted: *hotEncrypted
+    path: /var/lib/clickhouse/
+    storageRequest: *hotSize
+    storageClass: *hotStorageClass
+  #
+  # warm will be used if we had specified warm storageClass in sizing file for clickhouse
+  warm:
+    enabled: *warmEnabled
+    encrypted: *warmEncrypted
+    path: /var/lib/clickhouse-warm/
+    storageRequest: *warmSize
+    storageClass: *warmStorageClass
+  # host
+  host:
+    encrypted: "true"
+    hot:
+      storageRequest: *hostSize
+      enabled: "true"
+      path: /var/lib/clickhouse/
+    warm:
+      storageRequest: *hostSize
+      enabled: "true"
+      path: /var/lib/clickhouse-warm/
+  #
+  # cold tier, if enabled
+  cold:
+    enabled: "true"
+resources: *resources
+## Example:
+## limits:
+##    cpu: 500m
+##    memory: 1Gi
+#limits:
+#  memory: "2024Mi"
+#  cpu: "1000m"
+## Examples:
+## requests:
+##    cpu: 250m
+##    memory: 256Mi
+#requests:
+#  memory: "1024Mi"
+#  cpu: "500m"
+
+securityContext:
+  privileged: true #Prevents full access to the host system by avoiding privileged: false, but ch need privileged
+  allowPrivilegeEscalation: true # Prevents privilege escalation within containers,  but ch need privilegedescalation
+  capabilities: #Grants only the necessary Linux capabilities
+    add: ["SYS_NICE", "IPC_LOCK"]
+  readOnlyRootFilesystem: true # Blocks the container to modify the root filesystem.
+  runAsNonRoot: true #Ensures that containers do not run as root.
+  seccompProfile:
+    type: RuntimeDefault #Limits system calls to reduce attack vectors.
+podSecurityContext:
+  fsGroup: 101
+  runAsUser: 101
+  runAsGroup: 101
+  runAsNonRoot: true
+  seccompProfile:
+    type: RuntimeDefault #Limits system calls to reduce attack vectors.
+serviceAccount: # Used to create Service Account
+  create: true
+  name: ch-database
+  automountServiceAccountToken: false
+secure: false
+secure_kafka: false
+secure_minio: false
+tolerations: *tolerations
+service:
+  name: clickhouse
+  type: ClusterIP
+archival:
+  repository: *imageServer
+  image: "vunetsystems/clickhouse-backup:latest"
+  port: "7171"
+  logLevel: "debug"
+  allowEmptyBackups: "false"
+  apiCreateIntegrationTables: "true"
+  remoteStorage: "s3"
+  s3Endpoint: "http://minio-tenant:9000"
+  s3SecureEndpoint: "https://minio-tenant:9000"
+  s3Bucket: "hs-archives"
+  s3Path: ""
+  s3ForcePathStyle: "true"
+  s3DisableCertVerification: "true"
+  backupsToKeepRemote: "0"
+  checkReplicasBeforeAttach: "false"
+monit:
+  repository: *imageServer
+  image: vunetsystems/vutelegraf:1.32.17
+  port: "9000"
+  useMainCluster: true
+  monitService: clickhouse.monit
+  resources:
+    requests:
+      memory: 256Mi
+      cpu: 0.1
+    limits:
+      memory: 2Gi
+      cpu: 1
+  securityContext:
+    runAsUser: 101
+    runAsGroup: 101
+    fsGroup: 101
+    readOnlyRootFilesystem: true # service not generating any tmp files/data part of pod lifecycle so making root file system readOnly.
+    runAsNonRoot: true
+    seccompProfile:
+      type: RuntimeDefault
+    privileged: false
+    allowPrivilegeEscalation: false
+    capabilities:
+      add: ["CAP_NET_RAW", "SYS_NICE", "IPC_LOCK"]
+override_config:
+  loggingLevel: "notice"
+  systemTablePartitionBy: "toYYYYMMDD"
+  systemTableRetentionDays: 3
+  rootCAPath: "/etc/secrets.d/rootCA.crt"
+  skipHostVerify: "true"
+  toml: |2
+    [agent]
+      collection_jitter = "0s"
+      debug = true
+      flush_interval = "10s"
+      flush_jitter = "0s"
+      hostname = "${CH_HOSTNAME}"
+      interval = "60s"
+      logfile = ""
+      metric_batch_size = 100
+      metric_buffer_limit = 10000
+      omit_hostname = false
+      precision = ""
+      quiet = false
+      round_interval = true
+
+
+    [[outputs.clickhouse]]
+      ## Data source name
+      data_source_name = "${CH_MONIT_HOST}:${CH_MONIT_PORT}"
+      username = "${VUSMART_USERNAME}"
+      password = "${VUSMART_PASSWORD}"
+      database = "monitoring"
+      ch_cluster = "vusmart"
+      secure = "${SECURE}"
+      root_ca_path = "${ROOT_CA_PATH}"
+      server_cert_path = "${SERVER_CERT_PATH}"
+      server_key_path = "${SERVER_KEY_PATH}"
+      skip_host_verify = "${SKIP_HOST_VERIFY}"
+      ## Timestamp column name
+      timestamp_column = "timestamp"
+
+      ## Table creation template
+      ## Available template variables:
+      ##  {TABLE} - table name as a quoted identifier
+      ##  {TABLELITERAL} - table name as a quoted string literal
+      ##  {COLUMNS} - column definitions (list of quoted identifiers and types)
+      table_template = "CREATE TABLE IF NOT EXISTS \"{TABLE}_data\" ON CLUSTER {CLUSTER} ({COLUMNS}) ENGINE = ReplicatedMergeTree('/clickhouse/tables/\"{TABLE}_data\"/{shard}', '{replica}') PRIMARY KEY (timestamp,host) ORDER by (timestamp,host) Partition by toYYYYMMDD(timestamp) TTL timestamp + INTERVAL 3 DAY SETTINGS merge_with_ttl_timeout = 120;"
+
+      additional_templates = ["CREATE TABLE IF NOT EXISTS {TABLE} ON CLUSTER {CLUSTER} ({COLUMNS}) ENGINE=Distributed({CLUSTER}, 'monitoring', \"{TABLE}_data\", rand())"]
+      postfixes = ["_data"]
+
+      ## Table existence check template
+      ## Available template variables:
+      ##  {TABLE} - tablename as a quoted identifier
+      # table_exists_template = "SELECT 1 FROM {TABLE} LIMIT 1"
+
+      ## The statement defined here will be used by telegraf to check whether table exists.
+      ## There are multiple commands available to check the presence of a table.
+      ## We use EXISTS command as that has been observed to be he most efficient.
+      table_exists_template = "EXISTS table monitoring.{TABLE}"
+
+      [outputs.clickhouse.convert]
+        conversion_style     = "literal"
+        integer              = "Int64"
+        text                 = "String"
+        timestamp            = "DateTime"
+        defaultvalue         = "String"
+        unsigned             = "UInt64"
+        bool                 = "UInt8"
+        real                 = "Float64"
+
+    [[inputs.sql]]
+      interval = "60s"
+      ## Database Driver
+      ## See https://github.com/influxdata/telegraf/blob/master/docs/SQL_DRIVERS_INPUT.md for
+      ## a list of supported drivers.
+      driver = "clickhouse"
+
+      ## Data source name for connecting
+      ## The syntax and supported options depends on selected driver.
+      dsn = "tcp://${CH_HOST}:${CH_PORT}/vusmart?username=${DNS_USERNAME}&password=${DNS_PASSWORD}&secure=${SECURE}&skip_verify=${SECURE}"
+
+      [[inputs.sql.query]]
+        ## Query to perform on the server
+        query="select type, query_start_time, query_duration_ms, query_id, is_initial_query, query, read_rows, read_bytes, result_rows, result_bytes, memory_usage, exception, stack_trace, user, initial_user, multiIf(empty(client_name), http_user_agent, concat(client_name, ' ', toString(client_version_major), '.', toString(client_version_minor), '.', toString(client_version_patch))) AS client, client_hostname from system.query_log WHERE (type != 'QueryStart') AND (query_kind = 'Select') AND event_time > NOW() - INTERVAL '60 second'"
+        ## Alternatively to specifying the query directly you can select a file here containing the SQL query.
+        ## Only one of 'query' and 'query_script' can be specified!
+        # query_script = "/path/to/sql/script.sql"
+
+        ## Name of the measurement
+        ## In case both measurement and 'measurement_col' are given, the latter takes precedence.
+        measurement = "clickhouse_query_log"
+
+      [[inputs.sql.query]]
+        ## Query to perform on the server
+        query="select query_id, query, user, query_kind, elapsed from system.processes"
+        ## Alternatively to specifying the query directly you can select a file here containing the SQL query.
+        ## Only one of 'query' and 'query_script' can be specified!
+        # query_script = "/path/to/sql/script.sql"
+
+        ## Name of the measurement
+        ## In case both measurement and 'measurement_col' are given, the latter takes precedence.
+        measurement = "clickhouse_processes"
+
+      [[inputs.sql.query]]
+        ## Query to perform on the server
+        query="select event_time, ProfileEvent_InsertedBytes, ProfileEvent_InsertedRows, ProfileEvent_Query, ProfileEvent_FailedQuery, CurrentMetric_TCPConnection, CurrentMetric_HTTPConnection, ProfileEvent_MergedUncompressedBytes, ProfileEvent_MergedRows, ProfileEvent_OSIOWaitMicroseconds,ProfileEvent_OSCPUWaitMicroseconds,ProfileEvent_ZooKeeperWaitMicroseconds,CurrentMetric_MemoryTracking from system.metric_log where event_time > NOW() - INTERVAL '60 second'"
+        ## Alternatively to specifying the query directly you can select a file here containing the SQL query.
+        ## Only one of 'query' and 'query_script' can be specified!
+        # query_script = "/path/to/sql/script.sql"
+
+        ## Name of the measurement
+        ## In case both measurement and 'measurement_col' are given, the latter takes precedence.
+        measurement = "clickhouse_metric_log"
+
+      [[inputs.sql.query]]
+        ## Query to perform on the server
+        query="select uptime() as uptime"
+        ## Alternatively to specifying the query directly you can select a file here containing the SQL query.
+        ## Only one of 'query' and 'query_script' can be specified!
+        # query_script = "/path/to/sql/script.sql"
+
+        ## Name of the measurement
+        ## In case both measurement and 'measurement_col' are given, the latter takes precedence.
+        measurement = "clickhouse_uptime"
+
+      [[inputs.sql.query]]
+        ## Query to perform on the server
+        query="select * from system.asynchronous_metrics where metric in ('ReplicasMaxAbsoluteDelay', 'ReplicasMaxRelativeDelay', 'ReplicasMaxQueueSize')"
+        ## Alternatively to specifying the query directly you can select a file here containing the SQL query.
+        ## Only one of 'query' and 'query_script' can be specified!
+        # query_script = "/path/to/sql/script.sql"
+
+        ## Name of the measurement
+        ## In case both measurement and 'measurement_col' are given, the latter takes precedence.
+        measurement = "clickhouse_replication_status"
+
+      [[inputs.sql.query]]
+        ## Query to perform on the server
+        query="select * from system.disks"
+        ## Alternatively to specifying the query directly you can select a file here containing the SQL query.
+        ## Only one of 'query' and 'query_script' can be specified!
+        # query_script = "/path/to/sql/script.sql"
+
+        ## Name of the measurement
+        ## In case both measurement and 'measurement_col' are given, the latter takes precedence.
+        measurement = "clickhouse_disks"
+pvMapping:
+  warm-chi-clickhouse-vusmart-0-0-0:
+    nodeName: e2e-102-161
+    hostPath: /data1
+    size: 12Gi
+    storageClass: local-storage
+    dirPath: clickhouse-warm
+    nodeIP: 216.48.185.161
+  clickhouse-data-volume-chi-clickhouse-vusmart-0-0-0:
+    nodeName: e2e-102-161
+    hostPath: /data1
+    size: 12Gi
+    storageClass: local-storage
+    dirPath: clickhouse
+    nodeIP: 216.48.185.161

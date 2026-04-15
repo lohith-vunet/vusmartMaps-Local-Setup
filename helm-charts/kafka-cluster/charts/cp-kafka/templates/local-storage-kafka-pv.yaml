@@ -1,0 +1,35 @@
+{{- if .Values.pvMapping }}
+{{- $namespace := .Release.Namespace }}
+{{range $i, $e := .Values.pvMapping}} # list of nodeNames comes from launcher sizing file 
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: cp-kafka-pv-{{$i}}
+  annotations:
+    helm.sh/resource-policy: keep
+spec:
+  capacity:
+    storage: {{ $e.size }}
+  volumeMode: Filesystem
+  accessModes:
+    - ReadWriteOnce
+  persistentVolumeReclaimPolicy: Retain
+  storageClassName: {{$e.storageClass}}
+  local:
+    path: {{$e.hostPath}}/kafka_dir  # Local path on each node
+  nodeAffinity:
+    required:
+      nodeSelectorTerms:
+        - matchExpressions:
+            - key: kubernetes.io/hostname
+              operator: In
+              values:
+                - "kind-control-plane" # Use node name from list
+
+  claimRef:
+    name: datadir-0-kafka-cluster-cp-kafka-{{$i}}  # Name of the PVC that will claim this volume , datadir-0, Here 0 is index of disksPerBroker. 
+    namespace: {{ $namespace }}
+
+---
+{{- end }}
+{{- end }}

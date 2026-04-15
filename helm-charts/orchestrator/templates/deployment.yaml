@@ -1,0 +1,81 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "orchestration.fullname" . }}
+  labels:
+    {{- include "orchestration.labels" . | nindent 4 }}
+spec:
+  {{- if not .Values.autoscaling.enabled }}
+  replicas: {{ .Values.replicaCount }}
+  {{- end }}
+  selector:
+    matchLabels:
+      {{- include "orchestration.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      {{- with .Values.podAnnotations }}
+      annotations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      labels:
+        {{- include "orchestration.selectorLabels" . | nindent 8 }}
+    spec:
+      serviceAccountName: {{ .Values.serviceAccount.name  }}
+      automountServiceAccountToken: {{ .Values.serviceAccount.automountServiceAccountToken }}  #Enabled SA token auto-mount since needed for Service
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      securityContext:
+        {{- toYaml .Values.podSecurityContext | nindent 8 }}
+      affinity:
+        podAntiAffinity: {{- include "common.affinities.pods" (dict "type" .Values.podAntiAffinityPreset "component" "grafana" "context" $) | nindent 10 }}
+        {{- with .Values.affinity.nodeAffinity }}
+        nodeAffinity:
+          {{- toYaml . | nindent 12 }}
+        {{- end }}
+      containers:
+        - name: {{ .Chart.Name }}
+          volumeMounts:
+        #  - name: ca-orchestration
+        #    mountPath: /etc/ssl/certs/vunet-ca-cert.pem
+        #    subPath: vunet-ca-cert.pem
+          - mountPath: /home/vunet/workspace/orchestration/static-files/config.yaml
+            name: orch-config
+            subPath: config.yaml
+          securityContext:
+            {{- toYaml .Values.securityContext | nindent 12 }}
+          image: "{{ .Values.image.repository }}/{{ .Values.image.name }}:{{ .Values.image.tag | default .Chart.AppVersion }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          env:
+          {{- range $key, $value := .Values.deploymentEnv }}
+          {{- if $value }}
+          - name: {{$key}}
+            value: {{$value}}
+          {{- end }}
+          {{- end }}
+          envFrom:
+          - secretRef:
+              name: orchestrator-secret
+          ports:
+            - containerPort: 8080
+              name: api
+            - containerPort: 13000
+              name: webhook
+          resources:
+            {{- toYaml .Values.resources | nindent 12 }}
+      {{- with .Values.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      volumes:
+      #  - name: ca-orchestration
+      #    configMap:
+      #      name: ca-orchestration
+        - name: orch-config
+          configMap:
+            name: {{ .Release.Name }}-config

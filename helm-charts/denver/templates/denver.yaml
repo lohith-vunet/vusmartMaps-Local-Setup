@@ -1,0 +1,19 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: denver
+  labels:
+    organization: vunet
+    io.kompose.service: denver
+  {{- include "denver.labels" . | nindent 4 }}
+  annotations:
+    kompose.cmd: ./kompose convert -f ../stack/vuinterface.yml
+    kompose.version: 1.28.0 (c4137012e)
+spec:
+  type: {{ .Values.denver.type }}
+  selector:
+    organization: vunet
+    io.kompose.service: denver
+  {{- include "denver.selectorLabels" . | nindent 4 }}
+  ports:
+	{{- .Values.denver.ports | toYaml | nindent 2 -}}

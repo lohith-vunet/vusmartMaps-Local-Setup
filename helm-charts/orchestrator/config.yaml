@@ -1,0 +1,30 @@
+# MINIO webhook details to listen the file events
+webhook:
+  arn: "arn:minio:sqs::PRIMARY:webhook"
+  port: 13000
+  endpoint: "/vunet/"
+
+# VuStream configuration
+vustream:
+  bucket_name: "vustream"
+  log_bucket_name: "vustream-log"
+  template_bucket_name: "deployment-templates"
+  deployment_template_name: "pipeline.yaml"
+  namespace: "vsmaps"
+  deployment_timeout: 300 # Time in seconds
+  deployment_poll: 5 # sleep time interval between each status check
+
+# vublock configuration
+vublock:
+  bucket_name: "vublock"
+  log_bucket_name: "vublock-log"
+  template_bucket_name: "deployment-templates"
+  namespace: "vsmaps"
+  deployment_timeout: 300 # Total time to wait
+  deployment_poll: 5 # sleep time interval between each status check
+
+# Minio address with port and endpoint
+minio:
+  address: "minio-tenant:9000"
+  namespace: "vsmaps"
+  # cacert_path: "/etc/ssl/certs/vunet-ca-cert.pem"

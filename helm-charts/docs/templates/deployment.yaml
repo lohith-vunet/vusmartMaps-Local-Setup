@@ -1,0 +1,88 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  annotations:
+    kompose.cmd: ./kompose convert -f docs.yaml
+    kompose.version: 1.28.0 (c4137012e)
+  labels:
+    organization: vunet
+    io.kompose.service: docs-vunet
+  name: {{ .Values.docsDeployment.name }}
+spec:
+  replicas: {{ .Values.docsDeployment.replicas }}
+  selector:
+    matchLabels:
+      organization: vunet
+      io.kompose.service: docs-vunet
+  strategy: {}
+  template:
+    metadata:
+      annotations:
+        kompose.cmd: ./kompose convert -f docs.yaml
+        kompose.version: 1.28.0 (c4137012e)
+        apparmor.security.beta.kubernetes.io/pod: runtime/default
+      labels:
+        organization: vunet
+        io.kompose.network/vunet-network: "true"
+        io.kompose.service: docs-vunet
+    spec:
+      {{- with .Values.docsContainer.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      serviceAccountName: {{ .Values.serviceAccount.name  }}
+      automountServiceAccountToken: {{ .Values.serviceAccount.automountServiceAccountToken }}  #Disable SA token auto-mount
+      hostname: docs-vunet
+      restartPolicy: Always
+      {{- if .Values.podSecurityContext }}
+      securityContext: {{- toYaml .Values.podSecurityContext | nindent 10 }}
+      {{- end }}
+      affinity:
+        nodeAffinity:
+          {{- toYaml .Values.nodeAffinity | nindent 10}}
+        podAntiAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            - labelSelector:
+                matchExpressions:
+                  - key: {{ .Values.podAntiAffinity.keyPlaceholder }}
+                    operator: In
+                    values:
+                      - {{ .Values.podAntiAffinity.valuePlaceholder }}
+              topologyKey: {{ .Values.podAntiAffinity.topologyKeyPlaceholder }}
+
+      tolerations:
+        {{- toYaml .Values.tolerations | nindent 8}}
+      containers:
+        - name: docs-vunet
+          env:
+            - name: NODE_ENV
+              value: {{ .Values.env.NODE_ENV }}
+            - name: DOCUSAURUS_BASE_URL
+              value: {{ .Values.env.DOCS_BASE_URL }}
+
+          image: {{ .Values.docsContainer.repository }}/{{ .Values.docsContainer.image }}:{{ .Values.docsContainer.tag }}
+          imagePullPolicy: {{ .Values.docsContainer.imagePullPolicy }}
+          {{- if .Values.securityContext }}
+          securityContext: {{- toYaml .Values.securityContext | nindent 12 }}
+          {{- end }}
+          {{- if .Values.resources }}
+          resources: {{- toYaml .Values.resources | nindent 12 }}
+          {{- end }}
+          ports:
+            - containerPort: {{ .Values.docsContainer.ports.containerPort }}
+              name: docs-vunet
+          # https://kubernetes.io/docs/tasks/configure-pod-container/configure-liveness-readiness-startup-probes/#configure-probes
+          livenessProbe:
+            httpGet:
+              path: /
+              port: 3000
+            initialDelaySeconds: 120
+            periodSeconds: 30
+            timeoutSeconds: 10
+          readinessProbe:
+            httpGet:
+              path: /
+              port: 3000
+            initialDelaySeconds: 120
+            periodSeconds: 30
+            timeoutSeconds: 10

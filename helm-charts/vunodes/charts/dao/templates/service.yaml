@@ -1,0 +1,15 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: dao
+  labels:
+    app: dao
+    managedBy: vunet
+    {{- include "cairo.labels" . | nindent 4 }}
+spec:
+  ports:
+    - port: 50051
+      name: alert
+  selector:
+    app: dao
+    managedBy: vunet

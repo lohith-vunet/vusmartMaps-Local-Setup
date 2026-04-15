@@ -1,0 +1,68 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: "enrichment-table-update"
+  labels:
+    app.kubernetes.io/managed-by: {{.Release.Service | quote }}
+    app.kubernetes.io/instance: {{.Release.Name | quote }}
+    app.kubernetes.io/version: {{.Chart.AppVersion }}
+    helm.sh/chart: "{{.Chart.Name }}-{{.Chart.Version }}"
+  annotations:
+    # This is what defines this resource as a hook. Without this line, the
+    # job is considered part of the release.
+    "helm.sh/hook": post-install
+    "helm.sh/hook-weight": "0"
+    "helm.sh/hook-delete-policy": hook-succeeded
+spec:
+  template:
+    metadata:
+      name: "enrichment-table-update"
+      labels:
+        app.kubernetes.io/managed-by: {{ .Release.Service | quote }}
+        app.kubernetes.io/instance: {{ .Release.Name | quote }}
+        helm.sh/chart: "{{ .Chart.Name }}-{{ .Chart.Version }}"
+    spec:
+      serviceAccountName: {{ .Values.serviceAccount.name  }}
+      automountServiceAccountToken: {{ .Values.serviceAccount.automountServiceAccountToken }}  #Disable SA token auto-mount
+      {{- if .Values.podSecurityContext }}
+      securityContext: {{- toYaml .Values.podSecurityContext | nindent 8 }}
+      {{- end }}
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+
+      {{- with .Values.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      restartPolicy: Never
+      containers:
+      - name: post-job-enrichment
+        {{- if .Values.securityContext }}
+        securityContext: {{- toYaml .Values.securityContext | nindent 10 }}
+        {{- end }}
+        resources: {{- toYaml .Values.postJobResources | nindent 12 }}
+        env:
+        {{- if .Values.cairo.extraEnvVars }}
+        {{- include "common.tplvalues.render" (dict "value" .Values.cairo.extraEnvVars "context" $) | nindent 8 }}
+        {{- end }}
+        envFrom:
+        - configMapRef:
+            name: postjob-config
+        - secretRef:
+            name: postjob-secret
+        image: {{ .Values.cairo.image.repository }}/{{ .Values.cairo.image.name }}:{{ .Values.cairo.image.tag
+          | default .Chart.AppVersion }}
+        imagePullPolicy: {{ .Values.cairo.image.pullPolicy }}
+        command: ["/bin/bash", "-c", "cd /home/vunet/workspace/cairo; python enrichment_table.py"]
+        volumeMounts:
+          - name: enrichment-job
+            mountPath: /home/vunet/workspace/cairo/enrichment_table.py
+            subPath: enrichment_table.py
+      volumes:
+        - name: enrichment-job
+          configMap:
+            name: enrichment-job-cm
+            defaultMode: 0777
+

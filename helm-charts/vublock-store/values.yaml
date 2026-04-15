@@ -1,0 +1,104 @@
+# vulauncher will update this section while deployment
+vunet:
+  imageServer: &imageServer ghcr.io
+  imageName: &imageName vunetsystems/vublock-store
+    # imageTag: &imageTag "2.16.170"
+  imageTag: &imageTag "2.16.167"  
+  # cpu and memory min and max values
+  resources: &resources
+    limits:
+      cpu: "0.3"
+      memory: 500Mi
+    requests:
+      cpu: "0.2"
+      memory: 250Mi
+  # priority node labels
+  nodeAffinity: &nodeAffinity {}
+  # tolerations
+  tolerations: &tolerations []
+  # number of pods to run
+  replicas: &replicas 1
+  # pvc size that will be claimed. For vublockstore we will use default section. All others
+  # will be zero value
+  hot:
+    size: &hotSize ""
+    enabled: &hotEnabled false
+    encrypted: &hotEncrypted false
+    storageclass: &hotStorageClass ""
+  warm:
+    size: &warmSize ""
+    enabled: &warmEnabled false
+    encrypted: &warmEncrypted false
+    storageclass: &warmStorageClass ""
+  cold:
+    size: &coldSize ""
+    enabled: &coldEnabled false
+    encrypted: &coldEncrypted false
+    storageclass: &coldStorageClass ""
+  default:
+    size: &defaultSize ""
+    enabled: &defaultEnabled false
+    encrypted: &defaultEncrypted false
+    storageclass: &defaultStorageClass ""
+  default-replica:
+    size: &defaultReplicaSize ""
+    enabled: &defaultReplicaEnabled false
+    encrypted: &defaultReplicaEncrypted false
+    storageclass: &defaultReplicaStorageClass ""
+  host:
+    size: &hostSize ""
+    enabled: &hostEnabled false
+    encrypted: &hostEncrypted false
+    storageclass: &hostStorageClass ""
+  # ghcr credentials
+  pullSecretName: &pullSecretName ghcr-login-secret
+  dependencies:
+    - "vunodes"
+replicaCount: *replicas
+image:
+  repository: *imageServer
+  name: *imageName
+  pullPolicy: IfNotPresent
+  tag: *imageTag
+nameOverride: ""
+fullnameOverride: ""
+podAnnotations:
+  apparmor.security.beta.kubernetes.io/pod: runtime/default
+podSecurityContext:
+  runAsUser: 1002
+  runAsGroup: 1002
+  fsGroup: 1002
+  seccompProfile:
+    type: RuntimeDefault
+  runAsNonRoot: true
+securityContext:
+  privileged: false
+  allowPrivilegeEscalation: false # Prevent privilege escalation
+  capabilities:
+    drop: ["ALL"]
+  readOnlyRootFilesystem: true # service not generating any tmp files/data part of pod lifecycle so making root file system readOnly.
+  runAsNonRoot: true
+  seccompProfile:
+    type: RuntimeDefault
+serviceAccount:
+  create: true
+  name: vublock-store
+  automountServiceAccountToken: false
+resources: *resources
+nodeSelector: {}
+tolerations: *tolerations
+affinity:
+  nodeAffinity: *nodeAffinity
+env:
+  - name: MINIO_ACCESS_POINT
+    value: "minio-tenant:9000"
+  - name: MINIO_IMAGE_FOLDER
+    value: "images"
+  - name: MINIO_PUBLIC_BUCKET
+    value: "public"
+  - name: GRAFANA_URL
+    value: "http://nairobi:3000"
+command: ["tail", "-f", "/dev/null"]
+global:
+  imagePullSecrets:
+    - name: *pullSecretName

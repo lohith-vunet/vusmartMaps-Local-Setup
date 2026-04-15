@@ -1,0 +1,114 @@
+# vublock-store/templates/deployment.yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "vublock-store.fullname" . }}
+  labels:
+    {{- include "vublock-store.labels" . | nindent 4 }}
+spec:
+  replicas: {{ .Values.replicaCount }}
+  selector:
+    matchLabels:
+      {{- include "vublock-store.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "vublock-store.selectorLabels" . | nindent 8 }}
+      {{- if .Values.podAnnotations }}
+      annotations:
+        {{- toYaml .Values.podAnnotations | nindent 8 }}
+      {{- end }}
+    spec:
+      {{- with .Values.global.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- if .Values.podSecurityContext }}
+      securityContext:
+        {{- toYaml .Values.podSecurityContext | nindent 8 }}
+      {{- end }}
+      {{- if .Values.serviceAccount.name }}
+      serviceAccountName: {{ .Values.serviceAccount.name }}
+      {{- end }}
+      {{- if .Values.serviceAccount.automountServiceAccountToken }}
+      automountServiceAccountToken: {{ .Values.serviceAccount.automountServiceAccountToken }}
+      {{- end }}
+      containers:
+        - name: {{ .Chart.Name }}
+          image: "{{ .Values.image.repository }}/{{ .Values.image.name }}:{{ .Values.image.tag }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          {{- if .Values.securityContext }}
+          securityContext:
+            {{- toYaml .Values.securityContext | nindent 12 }}
+          {{- end }}
+          env:
+            {{- range .Values.env }}
+            - name: {{ .name }}
+              value: {{ .value | quote }}
+            {{- end }}
+            - name: MINIO_ACCESS_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: vublock-store-secret
+                  key: MINIO_ACCESS_KEY
+            - name: MINIO_SECRET_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: vublock-store-secret
+                  key: MINIO_SECRET_KEY
+            - name: ORCHESTRATION_CLIENT_ID
+              valueFrom:
+                secretKeyRef:
+                  name: vublock-store-secret
+                  key: ORCHESTRATION_CLIENT_ID
+            - name: ORCHESTRATION_CLIENT_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: vublock-store-secret
+                  key: ORCHESTRATION_CLIENT_SECRET
+            - name: GRAFANA_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: vublock-store-secret
+                  key: GRAFANA_API_KEY
+            - name: GRAFANA_USERNAME
+              valueFrom:
+                secretKeyRef:
+                  name: vublock-store-secret
+                  key: GRAFANA_USERNAME
+            - name: GRAFANA_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: vublock-store-secret
+                  key: GRAFANA_PASSWORD
+            - name: IDP_GET_TOKEN_URL
+              valueFrom:
+                secretKeyRef:
+                  name: vublock-store-secret
+                  key: IDP_GET_TOKEN_URL
+          volumeMounts:
+            - name: tmp-dir
+              mountPath: /tmp
+          {{- if .Values.resources }}
+          resources:
+            {{- toYaml .Values.resources | nindent 12 }}
+          {{- end }}
+          volumeMounts:
+          - name: tmp-dir
+            mountPath: /tmp
+      {{- with .Values.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      volumes:
+      - name: tmp-dir
+        emptyDir: {}
+

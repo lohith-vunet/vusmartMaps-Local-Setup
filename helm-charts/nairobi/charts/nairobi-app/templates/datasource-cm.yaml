@@ -1,0 +1,167 @@
+apiVersion: v1
+data:
+  ds.yml: |
+    apiVersion: 1
+    datasources:
+      - type: vunet-datasource
+        org_id: 1
+        org_name: Vunet Systems Pvt. Ltd.
+        disabled: false
+        uid: vunetds_1
+        isDefault: true
+        editable: false
+        name: Vunet (Provisioned)
+        url: http://vuinterface:8888
+        jsonData:
+          oauthPassThru: true
+          timeout: null
+      - id: 5
+        uid: f3f96d8a-2515-4db9-bac0-d47116739fb5
+        orgId: 1
+        name: Hyperscale DS
+        type: hyperscale-datasource
+        typeLogoUrl: ''
+        access: proxy
+        url: ''
+        user: ''
+        database: ''
+        basicAuth: false
+        basicAuthUser: ''
+        withCredentials: false
+        isDefault: false
+        jsonData:
+          defaultDatabase: vusmart
+          defaultTable: ''
+          host: hyperscale
+          logs:
+            otelVersion: latest
+          port: 8123
+          protocol: http
+          traces:
+            durationUnit: nanoseconds
+            otelVersion: latest
+          username: vusmart
+          version: 4.0.2
+        secureJsonFields:
+          password: true
+        secureJsonData:
+          password: Vunet#7814
+        version: 1
+        readOnly: true
+      - id: 3
+        uid: e7162a44-0c79-4e61-bc5a-932f7a0c5095
+        orgId: 1
+        name: HyperscaleDS-monitoring
+        type: hyperscale-datasource
+        typeLogoUrl: ''
+        access: proxy
+        url: ''
+        user: ''
+        database: ''
+        basicAuth: false
+        basicAuthUser: ''
+        withCredentials: false
+        isDefault: false
+        jsonData:
+          defaultDatabase: monitoring
+          host: clickhouse
+          logs:
+            otelVersion: latest
+          port: 9000
+          protocol: native
+          traces:
+            durationUnit: nanoseconds
+            otelVersion: latest
+          username: vusmart
+          version: 4.0.2
+        secureJsonFields:
+          password: true
+        secureJsonData:
+          password: Vunet#7814
+        version: 1
+        readOnly: true
+      - id: 4
+        uid: c2699b49-36fa-4e90-9e95-85fc264f2c03
+        orgId: 1
+        name: vutraces-ch
+        type: vertamedia-clickhouse-datasource
+        typeLogoUrl: ''
+        access: proxy
+        url: http://clickhouse:8123
+        user: ''
+        database: ''
+        basicAuth: true
+        basicAuthUser: vusmart
+        withCredentials: false
+        isDefault: false
+        jsonData:
+          defaultDatabase: vusmart
+        secureJsonFields:
+          basicAuthPassword: true
+        secureJsonData:
+          basicAuthPassword: Vunet#7814
+        version: 1
+        readOnly: true
+      - id: 63
+        uid: ce4c8c51-b515-4548-9e4c-89ddf35ac41c
+        orgId: 1
+        name: PostgreSQL
+        type: postgres
+        typeLogoUrl: ''
+        access: proxy
+        url: timescaledb-1:5432
+        user: vusmart
+        database: ''
+        basicAuth: false
+        basicAuthUser: ''
+        withCredentials: false
+        isDefault: false
+        jsonData:
+          connMaxLifetime: 14400
+          database: multicore
+          maxIdleConns: 100
+          maxIdleConnsAuto: true
+          maxOpenConns: 100
+          postgresVersion: 1400
+          sslmode: disable
+          timescaledb: true
+        secureJsonFields:
+          password: true
+        secureJsonData:
+          password: vusmart
+        version: 1
+        readOnly: true
+      - id: 6
+        uid: aa2b32eb-96f8-4f00-8820-0fe806e1e23f
+        orgId: 1
+        name: Postgres-Dashboards
+        type: postgres
+        typeLogoUrl: ''
+        access: proxy
+        url: timescaledb-1:5432
+        user: vusmart
+        database: ''
+        basicAuth: false
+        basicAuthUser: ''
+        withCredentials: false
+        isDefault: false
+        jsonData:
+          connMaxLifetime: 14400
+          database: vuml_django
+          maxIdleConns: 100
+          maxIdleConnsAuto: true
+          maxOpenConns: 100
+          postgresVersion: 1400
+          sslmode: disable
+          timescaledb: true
+        secureJsonFields:
+          password: true
+        secureJsonData:
+          password: vusmart
+        version: 1
+        readOnly: false
+
+kind: ConfigMap
+metadata:
+  creationTimestamp: null
+  name: vunet-datasource

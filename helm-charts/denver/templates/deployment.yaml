@@ -1,0 +1,246 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "denver.fullname" . }}-denver
+  labels:
+    organization: vunet
+    io.kompose.service: denver
+  {{- include "denver.labels" . | nindent 4 }}
+spec:
+  replicas: {{ .Values.denver.replicas }}
+  selector:
+    matchLabels:
+      organization: vunet
+      io.kompose.service: denver
+    {{- include "denver.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        organization: vunet
+        io.kompose.service: denver
+      {{- include "denver.selectorLabels" . | nindent 8 }}
+      annotations:
+        {{- include "cairo.annotations" . | nindent 8 }}
+    spec:
+      {{- with .Values.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      serviceAccountName: {{ .Values.serviceAccount.name  }}
+      automountServiceAccountToken: {{ .Values.serviceAccount.automountServiceAccountToken }}  #Disable SA token auto-mount 
+      affinity:
+        podAntiAffinity:
+        {{- with .Values.affinity.nodeAffinity }}
+        nodeAffinity:
+          {{- toYaml . | nindent 10 }}
+        {{- end }}
+      {{- if .Values.podSecurityContext }}
+      securityContext: {{- toYaml .Values.podSecurityContext | nindent 8 }}
+      {{- end }}
+      containers:
+      - args: {{- toYaml .Values.denver.denver.args | nindent 8 }}
+        {{- if .Values.securityContext }}
+        securityContext: {{- toYaml .Values.securityContext | nindent 10 }}
+        {{- end }}
+        env:
+        - name: KUBERNETES_CLUSTER_DOMAIN
+          value: {{ quote .Values.kubernetesClusterDomain }}
+        - name: AIRFLOW_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: denver-env-secret
+              key: AIRFLOW_PASSWORD
+        - name: AIRFLOW_USERNAME
+          valueFrom:
+            secretKeyRef:
+              name: denver-env-secret
+              key: AIRFLOW_USERNAME
+        - name: CHATGPT_API_KEY
+          valueFrom:
+            secretKeyRef:
+              name: denver-env-secret
+              key: CHATGPT_API_KEY
+        - name: GRAFANA_API_KEY
+          valueFrom:
+            secretKeyRef:
+              name: denver-env-secret
+              key: GRAFANA_API_KEY
+        - name: IDP_USER_MANAGEMENT_TOKEN
+          valueFrom:
+            secretKeyRef:
+              name: denver-env-secret
+              key: IDP_USER_MANAGEMENT_TOKEN
+        - name: INTERNALDB_CREDENTIALS_PATH
+          valueFrom:
+            secretKeyRef:
+              name: denver-env-secret
+              key: INTERNALDB_CREDENTIALS_PATH
+        - name: KEYCLOAK_CLIENT_SECRET_KEY
+          valueFrom:
+            secretKeyRef:
+              name: denver-env-secret
+              key: KEYCLOAK_CLIENT_SECRET_KEY
+        - name: MINIO_ACCESS_KEY
+          valueFrom:
+            secretKeyRef:
+              name: denver-env-secret
+              key: MINIO_ACCESS_KEY
+        - name: MINIO_SECRET_KEY
+          valueFrom:
+            secretKeyRef:
+              name: denver-env-secret
+              key: MINIO_SECRET_KEY
+        - name: POSTGRES_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: denver-env-secret
+              key: POSTGRES_PASSWORD
+        - name: RESOURCE_SERVER_INTROSPECTION_KEY
+          valueFrom:
+            secretKeyRef:
+              name: denver-env-secret
+              key: RESOURCE_SERVER_INTROSPECTION_KEY
+        - name: GRAFANA_USERNAME
+          valueFrom:
+            secretKeyRef:
+              name: denver-env-secret
+              key: GRAFANA_USERNAME
+        - name: GRAFANA_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: denver-env-secret
+              key: GRAFANA_PASSWORD
+        envFrom:
+        - configMapRef:
+            name: {{ include "denver.fullname" . }}-env-config
+        image: {{ .Values.denver.denver.image.repository }}/{{ .Values.denver.denver.image.name }}:{{ .Values.denver.denver.image.tag
+          | default .Chart.AppVersion }}
+        livenessProbe:
+          exec:
+            command:
+            - "true"
+        name: denver
+        {{- if .Values.resources }}
+        resources: {{- toYaml .Values.resources | nindent 10 }}
+        {{- end }}
+        ports:
+        - name: swagger
+          containerPort: 8882
+          {{- if .Values.denver.expose }}
+          hostPort: 8882
+          {{- end}}
+        volumeMounts:
+        #- name: ca-denver
+        #  mountPath: /etc/ssl/certs/vunet-ca-cert.pem
+        #  subPath: vunet-ca-cert.pem
+        - mountPath: /home/vunet/src/denver/db.ini
+          name: dbini
+          subPath: db.ini
+      {{- if .Values.securityContext.readOnlyRootFilesystem }}
+        - mountPath: /tmp
+          name: temp-dir
+      {{- end }}
+      hostname: denver
+      initContainers:
+      - args: {{- toYaml .Values.denver.denverMigrate.args | nindent 8 }}
+        {{- if .Values.securityContext }}
+        securityContext: {{- toYaml .Values.securityContext | nindent 10 }}
+        {{- end }}
+        env:
+        - name: KUBERNETES_CLUSTER_DOMAIN
+          value: {{ quote .Values.kubernetesClusterDomain }}
+        - name: AIRFLOW_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: denver-env-secret
+              key: AIRFLOW_PASSWORD
+        - name: AIRFLOW_USERNAME
+          valueFrom:
+            secretKeyRef:
+              name: denver-env-secret
+              key: AIRFLOW_USERNAME
+        - name: CHATGPT_API_KEY
+          valueFrom:
+            secretKeyRef:
+              name: denver-env-secret
+              key: CHATGPT_API_KEY
+        - name: GRAFANA_API_KEY
+          valueFrom:
+            secretKeyRef:
+              name: denver-env-secret
+              key: GRAFANA_API_KEY
+        - name: GRAFANA_USERNAME
+          valueFrom:
+            secretKeyRef:
+              name: denver-env-secret
+              key: GRAFANA_USERNAME
+        - name: GRAFANA_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: denver-env-secret
+              key: GRAFANA_PASSWORD
+        - name: IDP_USER_MANAGEMENT_TOKEN
+          valueFrom:
+            secretKeyRef:
+              name: denver-env-secret
+              key: IDP_USER_MANAGEMENT_TOKEN
+        - name: INTERNALDB_CREDENTIALS_PATH
+          valueFrom:
+            secretKeyRef:
+              name: denver-env-secret
+              key: INTERNALDB_CREDENTIALS_PATH
+        - name: KEYCLOAK_CLIENT_SECRET_KEY
+          valueFrom:
+            secretKeyRef:
+              name: denver-env-secret
+              key: KEYCLOAK_CLIENT_SECRET_KEY
+        - name: MINIO_ACCESS_KEY
+          valueFrom:
+            secretKeyRef:
+              name: denver-env-secret
+              key: MINIO_ACCESS_KEY
+        - name: MINIO_SECRET_KEY
+          valueFrom:
+            secretKeyRef:
+              name: denver-env-secret
+              key: MINIO_SECRET_KEY
+        - name: POSTGRES_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: denver-env-secret
+              key: POSTGRES_PASSWORD
+        - name: RESOURCE_SERVER_INTROSPECTION_KEY
+          valueFrom:
+            secretKeyRef:
+              name: denver-env-secret
+              key: RESOURCE_SERVER_INTROSPECTION_KEY
+        envFrom:
+        - configMapRef:
+            name: {{ include "denver.fullname" . }}-env-config
+        image: {{ .Values.denver.denverMigrate.image.repository }}/{{ .Values.denver.denverMigrate.image.name }}:{{ .Values.denver.denverMigrate.image.tag
+          | default .Chart.AppVersion }}
+        name: denver-migrate
+        {{- if .Values.resources }}
+        resources: {{- toYaml .Values.resources | nindent 10 }}
+        {{- end }}
+      {{- if .Values.securityContext.readOnlyRootFilesystem }}
+        volumeMounts:
+          - mountPath: /tmp
+            name: temp-dir
+      {{- end }}
+      restartPolicy: Always
+      volumes:
+     # - name: ca-denver
+     #   configMap:
+     #     name: ca-denver
+      - configMap:
+          name: {{ include "denver.fullname" . }}-dbini-config
+        name: dbini
+      {{- if .Values.securityContext.readOnlyRootFilesystem }}
+      - name: temp-dir
+        emptyDir: {}
+      {{- end }}

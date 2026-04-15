@@ -1,0 +1,24 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: connect
+  labels:
+    organization: vunet
+    app: {{ template "cp-kafka-connect.name" . }}
+    chart: {{ template "cp-kafka-connect.chart" . }}
+    release: {{ .Release.Name }}
+    heritage: {{ .Release.Service }}
+spec:
+  ports:
+    - name: jvm-agent
+      port: {{ .Values.jvmPort}}
+    - name: kafka-connect
+      port: {{ .Values.servicePort }}
+    {{- if .Values.prometheus.jmx.enabled }}
+    - name: metrics
+      port: {{ .Values.prometheus.jmx.port }}
+    {{- end }}
+  selector:
+    organization: vunet
+    app: {{ template "cp-kafka-connect.name" . }}
+    release: {{ .Release.Name }}

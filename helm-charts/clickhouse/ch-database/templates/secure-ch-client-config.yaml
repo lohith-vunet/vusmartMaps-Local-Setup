@@ -1,0 +1,26 @@
+{{- if .Values.secure }}
+# Setup ClickHouse Client settings
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: ssl-ch-client-config
+data:
+  config.xml: |
+   <config>
+     <openSSL>
+       <client>
+           <loadDefaultCAFile>false</loadDefaultCAFile>
+           <caConfig>/etc/clickhouse-server/secrets.d/rootCA.crt</caConfig>
+           <cacheSessions>true</cacheSessions>
+           <disableProtocols>sslv2,sslv3</disableProtocols>
+           <preferServerCiphers>true</preferServerCiphers>
+           <verificationMode>none</verificationMode>
+           <invalidCertificateHandler>
+               <name>RejectCertificateHandler</name>
+           </invalidCertificateHandler>
+       </client>
+     </openSSL>
+     <port>9000</port>
+     <secure>1</secure>
+   </config>
+  {{- end }}

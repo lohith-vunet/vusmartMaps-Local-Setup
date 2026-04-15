@@ -1,0 +1,8 @@
+# local storage class manifest to create pv using local mount path
+apiVersion: storage.k8s.io/v1
+kind: StorageClass
+metadata:
+  name: local-storage
+provisioner: kubernetes.io/no-provisioner # No external provisioner
+volumeBindingMode: WaitForFirstConsumer
+allowVolumeExpansion: true # Allow the PVC to be resized in the future

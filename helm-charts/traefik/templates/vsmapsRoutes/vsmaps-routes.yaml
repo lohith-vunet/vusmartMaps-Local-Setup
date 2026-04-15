@@ -1,0 +1,392 @@
+{{- if .Values.ingressRoute.vsmaps.enabled -}}
+{{- range $name, $config := .Values.tlsOptions }}
+
+# IP Linked Cookie middleware
+# https://github.com/vunetsystems/miami/tree/main/plugins/src/vunetsystems/ip-linked-cookie
+{{- if $.Values.experimentalPlugins.ipLinkedCookie.enabled }}
+apiVersion: traefik.containo.us/v1alpha1
+kind: Middleware
+metadata:
+    name: iplinkedcookie
+spec:
+  plugin:
+    ipLinkedCookie:
+      SessionCookieName: vunet_session
+      CookiePath: "/vui"
+---
+{{- end }}
+
+# User Engagement Middleware
+# https://github.com/vunetsystems/miami/tree/main/plugins/src/vunetsystems/user-engagement
+apiVersion: traefik.containo.us/v1alpha1
+kind: Middleware
+metadata:
+  name: vumiddleware
+  namespace: {{ template "traefik.namespace" $ }}
+spec:
+  plugin:
+    vumiddleware:
+      userEngEndpoint: http://vuinterface:8888/vuSmartMaps/api/userengagement/
+---
+apiVersion: traefik.io/v1alpha1
+kind: Middleware
+metadata:
+  name: strip-server-header
+  namespace: {{ template "traefik.namespace" $ }}
+spec:
+  headers:
+    customResponseHeaders:
+      Server: ""
+---
+
+apiVersion: traefik.io/v1alpha1
+kind: IngressRoute
+metadata:
+  name: keycloak
+  namespace: {{ template "traefik.namespace" $ }}
+  annotations:
+  labels:
+    app.kubernetes.io/name: traefik
+    app.kubernetes.io/instance: release-name-default
+    helm.sh/chart: traefik-23.0.1
+    app.kubernetes.io/managed-by: Helm
+spec:
+  entryPoints:
+  - websecure
+  routes:
+  - match: PathPrefix(`/realms/`)  || PathPrefix(`/admin/`) || PathPrefix(`/resources/`) || PathPrefix(`/js/`)
+    kind: Rule
+    services:
+    - name: keycloak
+      namespace: {{ template "traefik.namespace" $ }}
+      port: 8080
+      scheme: http
+    middlewares:
+      - name: vumiddleware
+      - name: user-ratelimiting
+      - name: api-ratelimiting
+  tls:                              
+    secretName: {{ $.Values.secret.name }}       
+    options:                        
+      name: {{ $name }}
+---
+apiVersion: traefik.io/v1alpha1
+kind: IngressRoute
+metadata:
+  name: denver-api
+  namespace: {{ template "traefik.namespace" $ }}
+  annotations:
+  labels:
+    app.kubernetes.io/name: traefik
+    app.kubernetes.io/instance: release-name-default
+    helm.sh/chart: traefik-23.0.1
+    app.kubernetes.io/managed-by: Helm
+spec:
+  entryPoints:
+  - websecure
+  routes:
+  - match: PathPrefix(`/api/vuml/logs`) || PathPrefix(`/api/vuaccel`) || PathPrefix(`/api/metrics`)
+    kind: Rule
+    services:
+    - name: denver
+      namespace: {{ template "traefik.namespace" $ }}
+      port: 8882
+      scheme: http
+    middlewares:
+      - name: vumiddleware
+      - name: user-ratelimiting
+      - name: api-ratelimiting
+      - name: strip-server-header
+  tls:
+    secretName: {{ $.Values.secret.name }}
+    options:
+      name: {{ $name }}
+---
+apiVersion: traefik.io/v1alpha1
+kind: IngressRoute
+metadata:
+  name: vusmartmaps
+  namespace: {{ template "traefik.namespace" $ }}
+  annotations:
+  labels:
+    app.kubernetes.io/name: traefik
+    app.kubernetes.io/instance: release-name-default
+    helm.sh/chart: traefik-23.0.1
+    app.kubernetes.io/managed-by: Helm
+spec:
+  entryPoints:
+  - websecure
+  routes:
+  - match: Host(`www.vsmaps.vunetsystems.com`)
+    kind: Rule
+    services:
+    - name: vuinterface
+      namespace: {{ template "traefik.namespace" $ }}
+      port: 8888
+      scheme: http
+    middlewares:
+      - name: vumiddleware
+  tls:                              # [12]
+    secretName: {{ $.Values.secret.name }}       # [13]
+    options:                        # [14]
+      name: {{ $name }}
+---
+apiVersion: traefik.io/v1alpha1
+kind: IngressRoute
+metadata:
+  name: vusmartmaps-apis
+  namespace: {{ template "traefik.namespace" $ }}
+  annotations:
+  labels:
+    app.kubernetes.io/name: traefik
+    app.kubernetes.io/instance: release-name-default
+    helm.sh/chart: traefik-23.0.1
+    app.kubernetes.io/managed-by: Helm
+spec:
+  entryPoints:
+  - websecure
+  routes:
+  - match: PathPrefix(`/vuSmartMaps/api/`) || Path(`/vui/api/dashboards/home`) || PathPrefix(`/ws/vusmartmaps/`)
+    kind: Rule
+    priority: 1000
+    services:
+    - name: vuinterface
+      namespace: {{ template "traefik.namespace" $ }}
+      port: 8888
+      scheme: http
+    middlewares:
+      - name: vumiddleware
+      - name: user-ratelimiting
+      - name: api-ratelimiting
+      - name: strip-server-header
+  tls:                              # [12]
+    secretName: {{ $.Values.secret.name }}       # [13]
+    options:                        # [14]
+      name: {{ $name }}
+
+---
+apiVersion: traefik.containo.us/v1alpha1
+kind: Middleware
+metadata:
+  name: minio
+  namespace: {{ template "traefik.namespace" $ }}
+spec:
+  replacePathRegex:
+    regex: ^/(vui/|)(images|assets|vuDoc)/(.*)
+    replacement: /public/$2/$3
+---
+apiVersion: traefik.io/v1alpha1
+kind: IngressRoute
+metadata:
+  name: s3
+  namespace: {{ template "traefik.namespace" $ }}
+  annotations:
+  labels:
+    app.kubernetes.io/name: traefik
+    app.kubernetes.io/instance: release-name-default
+    helm.sh/chart: traefik-23.0.1
+    app.kubernetes.io/managed-by: Helm
+spec:
+  entryPoints:
+  - websecure
+  routes:
+  - match: PathPrefix(`/images/`) || PathPrefix(`/vui/images/`) || PathPrefix(`/assets/`) ||  PathPrefix(`/vuDoc/`) || PathPrefix(`/synthetic-browser-journey-monitoring/`)
+    kind: Rule
+    services:
+    - name: minio-tenant
+      namespace: vsmaps
+      port: 9000
+      scheme: http
+    middlewares:
+      - name: minio
+      - name: vumiddleware
+  tls:
+    secretName: tls-cert
+    options:
+      name: dev
+---
+apiVersion: traefik.containo.us/v1alpha1
+kind: Middleware
+metadata:
+  name: strip-prefix
+  namespace: {{ template "traefik.namespace" $ }}
+spec:
+  stripPrefix:
+    prefixes:
+      - "/minioconsole"
+---
+apiVersion: traefik.io/v1alpha1
+kind: IngressRoute
+metadata:
+  name: s3-minio-http
+  namespace: {{ template "traefik.namespace" $ }}
+  annotations:
+  labels:
+    app.kubernetes.io/name: traefik
+    app.kubernetes.io/instance: release-name-default
+    helm.sh/chart: traefik-23.0.1
+    app.kubernetes.io/managed-by: Helm
+spec:
+  entryPoints:
+  - websecure
+  routes:
+  - match: PathPrefix(`/minioconsole`)
+    kind: Rule
+    services:
+    - name: minio-tenant-console
+      namespace: vsmaps
+      port: 9001
+      scheme: http
+    middlewares:
+      - name: strip-prefix
+      - name: user-ratelimiting
+      - name: api-ratelimiting
+
+  tls:
+    secretName: tls-cert
+---
+apiVersion: traefik.io/v1alpha1
+kind: IngressRoute
+metadata:
+  name: nairobi
+  namespace: {{ template "traefik.namespace" $ }}
+  annotations:
+  labels:
+    app.kubernetes.io/name: traefik
+    app.kubernetes.io/instance: release-name-default
+    helm.sh/chart: traefik-23.0.1
+    app.kubernetes.io/managed-by: Helm
+spec:
+  entryPoints:
+  - websecure
+  routes:
+  - match: PathPrefix(`/vui/`)  || Path(`/vui`) || Path(`/`) || PathPrefix(`/public/`)
+    kind: Rule
+    services:
+    - name: nairobi
+      namespace: {{ template "traefik.namespace" $ }}
+      port: 3000
+      scheme: http
+    middlewares:
+      - name: vumiddleware
+      {{- if $.Values.experimentalPlugins.ipLinkedCookie.enabled }}
+      - name: iplinkedcookie
+      {{- end }}
+      - name: user-ratelimiting
+      - name: api-ratelimiting
+      - name: csp-header
+  tls:
+    secretName: {{ $.Values.secret.name }}
+    options:
+      name: {{ $name }}
+---
+apiVersion: traefik.io/v1alpha1
+kind: IngressRouteTCP  # This IngressRouteTCP is used to route TCP traffic to Kafka brokers, allowing external access and load balancing.
+metadata:
+  name: kafka-cluster
+  namespace: {{ template "traefik.namespace" $ }}
+  annotations:
+  labels:
+    app.kubernetes.io/name: traefik
+    app.kubernetes.io/instance: release-name-default
+    helm.sh/chart: traefik-23.0.1
+    app.kubernetes.io/managed-by: Helm
+spec:
+  entryPoints:
+    - kafka
+  routes:
+  - match: HostSNI(`*`)
+    services:
+      - name: broker
+        namespace: vsmaps
+        port: 9092   #kafka without SSL
+---
+apiVersion: traefik.io/v1alpha1
+kind: IngressRouteTCP  # This IngressRouteTCP is used to route TCP traffic to Kafka brokers, allowing external access and load balancing.
+metadata:
+  name: kafka-cluster-ssl
+  namespace: {{ template "traefik.namespace" $ }}
+  annotations:
+  labels:
+    app.kubernetes.io/name: traefik
+    app.kubernetes.io/instance: release-name-default
+    helm.sh/chart: traefik-23.0.1
+    app.kubernetes.io/managed-by: Helm
+spec:
+  entryPoints:
+    - kafka-ssl
+  routes:
+  - match: HostSNI(`*`)
+    services:
+      - name: broker
+        namespace: vsmaps
+        port: 9094   #kafka with SSL
+---
+apiVersion: traefik.containo.us/v1alpha1
+kind: Middleware
+metadata:
+  name: strip-prefix-nfs
+  namespace: vsmaps
+spec:
+  stripPrefix:
+    prefixes:
+      - "/nfsconsole"
+---
+apiVersion: traefik.io/v1alpha1
+kind: IngressRoute
+metadata:
+  name: s3-minio-nfs-http
+  namespace: vsmaps
+  annotations:
+  labels:
+    app.kubernetes.io/name: traefik
+    app.kubernetes.io/instance: release-name-default
+    helm.sh/chart: traefik-23.0.1
+    app.kubernetes.io/managed-by: Helm
+spec:
+  entryPoints:
+  - websecure
+  routes:
+  - match: PathPrefix(`/nfsconsole`)
+    kind: Rule
+    services:
+    - name: minio-nfs-console
+      namespace: vsmaps
+      port: 9001
+      scheme: http
+    middlewares:
+      - name: strip-prefix-nfs
+
+  tls:
+    secretName: tls-cert
+---
+apiVersion: traefik.io/v1alpha1
+kind: IngressRoute
+metadata:
+  name: docs-vunet
+  namespace: {{ template "traefik.namespace" $ }}
+  annotations:
+  labels:
+    app.kubernetes.io/name: traefik
+    app.kubernetes.io/instance: release-name-default
+    helm.sh/chart: traefik-23.0.1
+    app.kubernetes.io/managed-by: Helm
+spec:
+  entryPoints:
+  - websecure
+  routes:
+  - match: PathPrefix(`/docs`)
+    kind: Rule
+    services:
+    - name: docs-vunet
+      namespace: {{ template "traefik.namespace" $ }}
+      port: 3000
+  tls:
+    secretName: tls-cert
+    options:
+      name: dev
+      namespace: vsmaps
+
+---
+{{- end }}
+{{- end }}

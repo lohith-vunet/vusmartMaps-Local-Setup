@@ -1,0 +1,680 @@
+#
+# vulauncher will update this section while deployment
+vunet:
+  imageServer: &imageServer ghcr.io
+  imageName: &imageName "vunetsystems/vutelegraf"
+  imageTag: &imageTag "1.32.17"
+  # cpu and memory min and max values
+  resources: &resources
+    limits:
+      cpu: "0.3"
+      memory: 500Mi
+    requests:
+      cpu: "0.1"
+      memory: 250Mi
+  # priority node labels
+  nodeAffinity: &nodeAffinity {}
+  # tolerations
+  tolerations: &tolerations []
+  # number of pods to run
+  replicas: &replicas 1
+  # pvc size that will be claimed. For redis we will use default section. All others
+  # will be zero value
+  hot:
+    size: &hotSize ""
+    enabled: &hotEnabled false
+    encrypted: &hotEncrypted false
+    storageclass: &hotStorageClass ""
+  warm:
+    size: &warmSize ""
+    enabled: &warmEnabled false
+    encrypted: &warmEncrypted false
+    storageclass: &warmStorageClass ""
+  cold:
+    size: &coldSize ""
+    enabled: &coldEnabled false
+    encrypted: &coldEncrypted false
+    storageclass: &coldStorageClass ""
+  default:
+    size: &defaultSize ""
+    enabled: &defaultEnabled false
+    encrypted: &defaultEncrypted false
+    storageclass: &defaultStorageClass ""
+  default-replica:
+    size: &defaultReplicaSize ""
+    enabled: &defaultReplicaEnabled false
+    encrypted: &defaultReplicaEncrypted false
+    storageclass: &defaultReplicaStorageClass ""
+  host:
+    size: &hostSize ""
+    enabled: &hostEnabled false
+    encrypted: &hostEncrypted false
+    storageclass: &hostStorageClass ""
+  # ghcr credentials
+  pullSecretName: &pullSecretName ghcr-login-secret
+  dependencies:
+    - "ch-database"
+## Default values.yaml for Telegraf
+## This is a YAML-formatted file.
+## ref: https://hub.docker.com/r/library/telegraf/tags/
+posthook:
+  repository: *imageServer
+  imageName: vunetsystems/kubectl
+  imageTag: v2.15.0
+image:
+  repository: *imageServer
+  name: *imageName
+  tag: *imageTag
+  pullPolicy: IfNotPresent
+## Configure resource requests and limits
+## ref: http://kubernetes.io/docs/user-guide/compute-resources/
+imagePullSecrets:
+  - name: *pullSecretName
+replicaCount: *replicas
+affinityOperator: Exists
+affinity:
+  nodeAffinity: *nodeAffinity
+resources: *resources
+# requests:
+#     memory: 256Mi
+#     cpu: 0.1
+# limits:
+#     memory: 2Gi
+#     cpu: 1
+## Pod annotations
+podAnnotations: {}
+## Pod labels
+podLabels: {}
+## Configure args passed to Telegraf containers
+args: []
+## The name of a secret in the same kubernetes namespace which contains values to
+## be added to the environment (must be manually created)
+## This can be useful for auth tokens, etc.
+# envFromSecret: "telegraf-tokens"
+
+## Environment
+env:
+  # This pulls HOSTNAME from the node, not the pod.
+  - name: HOSTNAME
+    valueFrom:
+      fieldRef:
+        fieldPath: spec.nodeName
+  # In test clusters where hostnames are resolved in /etc/hosts on each node,
+  # the HOSTNAME is not resolvable from inside containers
+  # So inject the host IP as well
+  - name: HOSTIP
+    valueFrom:
+      fieldRef:
+        fieldPath: status.hostIP
+  - name: POD_NAME
+    valueFrom:
+      fieldRef:
+        fieldPath: metadata.name
+  # Mount the host filesystem and set the appropriate env variables.
+  # ref: https://github.com/influxdata/telegraf/blob/master/docs/FAQ.md
+  # HOST_PROC is required by the cpu, disk, diskio, kernel and processes input plugins
+  - name: "HOST_PROC"
+    value: "/hostfs/proc"
+  # HOST_SYS is required by the diskio plugin
+  - name: "HOST_SYS"
+    value: "/hostfs/sys"
+  - name: "HOST_MOUNT_PREFIX"
+    value: "/hostfs"
+  - name: CH_CLUSTER
+    value: vusmart
+  - name: CH_HOST
+    value: clickhouse.vsmaps
+  - name: CH_PORT
+    value: "9000"
+  - name: CH_MONIT_PORT
+    value: "9000"
+  - name: CH_MONIT_HOST
+    value: clickhouse.vsmaps
+## Add custom volumes and mounts
+# volumes:
+# - name: telegraf-output-influxdb2
+#   configMap:
+#     name: "telegraf-output-influxdb2"
+# mountPoints:
+# - name: telegraf-output-influxdb2
+#   mountPath: /etc/telegraf/conf.d
+#   subPath: influxdb2.conf
+
+## Tolerations for pod assignment
+## ref: https://kubernetes.io/docs/concepts/configuration/taint-and-toleration/
+##
+tolerations: *tolerations
+## If the DaemonSet should run on the host's network namespace
+## hostNetwork: true
+
+## If using hostNetwork=true, set dnsPolicy to ClusterFirstWithHostNet
+## ref: https://kubernetes.io/docs/concepts/services-networking/dns-pod-service/#
+## dnsPolicy: ClusterFirstWithHostNet
+
+## If using dnsPolicy=None, set dnsConfig
+## ref: https://kubernetes.io/docs/concepts/services-networking/dns-pod-service/#pod-dns-config
+## dnsConfig:
+##   nameservers:
+##     - 1.2.3.4
+##   searches:
+##     - ns1.svc.cluster-domain.example
+##     - my.dns.search.suffix
+##   options:
+##     - name: ndots
+##       value: "2"
+##     - name: edns0
+rbac:
+  # Specifies whether RBAC resources should be created
+  create: true
+serviceAccount:
+  # Specifies whether a ServiceAccount should be created
+  create: true
+  # The name of the ServiceAccount to use.
+  # If not set and create is true, a name is generated using the fullname template
+  name: vusmart
+  # Annotations for the ServiceAccount
+  annotations: {}
+  automountServiceAccountToken: true
+## Specify priorityClassName
+## Ref: https://kubernetes.io/docs/concepts/configuration/pod-priority-preemption/
+# priorityClassName: system-node-critical
+
+# Specify the pod's SecurityContext, including the OS user and group to run the pod
+securityContext:
+  privileged: false
+  capabilities:
+    add: ["CAP_NET_RAW"]
+  allowPrivilegeEscalation: false # Prevent privilege escalation
+  readOnlyRootFilesystem: true # service not generating any tmp files/data part of pod lifecycle so making root file system readOnly.
+  runAsNonRoot: true
+  seccompProfile:
+    type: RuntimeDefault
+podSecurityContext:
+  fsGroup: 1000
+  runAsUser: 1000
+  runAsGroup: 1000
+  runAsNonRoot: true
+  seccompProfile:
+    type: RuntimeDefault
+kubectlResources:
+  requests:
+    cpu: "50m"
+    memory: "100Mi"
+  limits:
+    cpu: "100m"
+    memory: "200Mi"
+override_config:
+  toml: |+
+    # Global tags can be specified here in key="value" format.
+    [global_tags]
+    # dc = "us-east-1" # will tag all metrics with dc=us-east-1
+    # rack = "1a"
+    ## Environment variables can be used as tags, and throughout the config file
+    # user = "$USER"
+    # Configuration for telegraf agent
+    [agent]
+      interval = "30s"
+      round_interval = true
+      metric_batch_size = 1000
+      metric_buffer_limit = 10000
+      ## Collection jitter is used to jitter the collection by a random amount.
+      ## Each plugin will sleep for a random time within jitter before collecting.
+      ## This can be used to avoid many plugins querying things like sysfs at the
+      ## same time, which can have a measurable effect on the system.
+      collection_jitter = "0s"
+      ## Default flushing interval for all outputs. Maximum flush_interval will be
+      ## flush_interval + flush_jitter
+      flush_interval = "10s"
+      ## Jitter the flush interval by a random amount. This is primarily to avoid
+      ## large write spikes for users running a large number of telegraf instances.
+      ## ie, a jitter of 5s and interval 10s means flushes will happen every 10-15s
+      flush_jitter = "0s"
+      precision = ""
+      ## Log at debug level.
+      #debug = true
+      ## Log only error level messages.
+      #quiet = false
+      ## Log target controls the destination for logs and can be one of "file",
+      ## "stderr" or, on Windows, "eventlog".  When set to "file", the output file
+      #y is determined by the "logfile" setting.
+      #logtarget = "file"
+      ## Name of the file to be logged to when using the "file" logtarget.  If set to
+      ## the empty string then logs are written to stderr.
+      logfile = ""
+      ## The logfile will be rotated after the time interval specified.  When set
+      ## to 0 no time based rotation is performed.  Logs are rotated only when
+      ## written to, if there is no log activity rotation may be delayed.
+      #logfile_rotation_interval = "0d"
+      ## The logfile will be rotated when it becomes larger than the specified
+      ## size.  When set to 0 no size based rotation is performed.
+      #logfile_rotation_max_size = "20MB"
+      ## Maximum number of rotated archives to keep, any older logs are deleted.
+      ## If set to -1, no archives are removed.
+      # logfile_rotation_max_archives = 5
+      ## Override default hostname, if empty use os.Hostname()
+      hostname = ""
+      ## If set to true, do no set the "host" tag in the telegraf agent.
+      omit_hostname = false
+      ###############################################################################
+      #                            OUTPUT PLUGINS                                   #
+      ###############################################################################
+      [[outputs.clickhouse]]
+    	data_source_name = "clickhouse.vsmaps:9000"
+    	username = "${VUSMART_USERNAME}"
+    	password = "${VUSMART_PASSWORD}"
+    	database = "monitoring"
+    	ch_cluster = "vusmart"
+
+    	# table_exists_template = "SELECT 1 FROM {TABLE} LIMIT 1"
+
+     ## The statement defined here will be used by telegraf to check whether table exists.
+     ## There are multiple commands available to check the presence of a table.
+     ## We use EXISTS command as that has been observed to be he most efficient.
+     table_exists_template = "EXISTS table monitoring.{TABLE}"
+
+       table_template = "CREATE TABLE IF NOT EXISTS \"{TABLE}_data\" ON CLUSTER {CLUSTER} ({COLUMNS}) ENGINE = ReplicatedMergeTree('/clickhouse/tables/\"{TABLE}_data\"/{shard}', '{replica}') ORDER BY timestamp Partition by toYYYYMMDD(timestamp) TTL timestamp + INTERVAL 3 DAY;"
+
+       additional_templates = ["CREATE TABLE IF NOT EXISTS {TABLE} ON CLUSTER {CLUSTER} ({COLUMNS}) ENGINE=Distributed({CLUSTER}, 'monitoring', \"{TABLE}_data\", rand())"]
+       postfixes = ["_data"]
+
+    	timestamp_column = "timestamp"
+
+       [outputs.clickhouse.convert]
+         bool = "UInt8"
+         conversion_style = "literal"
+         defaultvalue = "String"
+         integer = "Int64"
+         real = "Float64"
+         text = "String"
+         timestamp = "DateTime"
+         unsigned = "UInt64"
+
+
+         ########################## INPUT PLUGINS ###########################################
+         ####################################CPU #####################################
+         ### Read JMX metrics through Jolokia
+    [[inputs.sql]]
+     interval = "60s"
+     ## Database Driver
+     ## See https://github.com/influxdata/telegraf/blob/master/docs/SQL_DRIVERS_INPUT.md for
+     ## a list of supported drivers.
+     driver = "clickhouse"
+
+     ## Data source name for connecting
+     ## The syntax and supported options depends on selected driver.
+     dsn = "tcp://${CH_HOST}:${CH_PORT}/monitoring?username=${VUSMART_USERNAME}&password=${DNS_PASSWORD}"
+
+
+     [[inputs.sql.query]]
+       ## Query to perform on the server
+       query="select * from system.clusters where cluster = '${CH_CLUSTER}'"
+       ## Alternatively to specifying the query directly you can select a file here containing the SQL query.
+       ## Only one of 'query' and 'query_script' can be specified!
+       # query_script = "/path/to/sql/script.sql"
+
+       ## Name of the measurement
+       ## In case both measurement and 'measurement_col' are given, the latter takes precedence.
+       measurement = "clickhouse_clusters"
+
+       ## Column name containing the name of the measurement
+       ## If given, this will take precedence over the 'measurement' setting. In case a query result
+       ## does not contain the specified column, we fall-back to the 'measurement' setting.
+       # measurement_column = ""
+
+       ## Column name containing the time of the measurement
+       ## If ommited, the time of the query will be used.
+       #time_column = "event_time"
+
+       ## Format of the time contained in 'time_col'
+       ## The time must be 'unix', 'unix_ms', 'unix_us', 'unix_ns', or a golang time format.
+       ## See https://golang.org/pkg/time/#Time.Format for details.
+       # time_format = "unix"
+
+       ## Column names containing tags
+       ## An empty include list will reject all columns and an empty exclude list will not exclude any column.
+       ## I.e. by default no columns will be returned as tag and the tags are empty.
+       # tag_columns_include = []
+       # tag_columns_exclude = []
+     [[inputs.sql.query]]
+       ## Query to perform on the server
+       query="select event_time, database, table, part_name, partition_id, partition, part_type, disk_name, path_on_disk, event_type, duration_ms, rows, size_in_bytes, bytes_uncompressed, peak_memory_usage, error, exception from cluster('${CH_CLUSTER}',system.part_log) where event_time > NOW() - INTERVAL '60 second'"
+       ## Alternatively to specifying the query directly you can select a file here containing the SQL query.
+       ## Only one of 'query' and 'query_script' can be specified!
+       # query_script = "/path/to/sql/script.sql"
+
+       ## Name of the measurement
+       ## In case both measurement and 'measurement_col' are given, the latter takes precedence.
+       measurement = "clickhouse_part_log"
+
+       ## Column name containing the name of the measurement
+       ## If given, this will take precedence over the 'measurement' setting. In case a query result
+       ## does not contain the specified column, we fall-back to the 'measurement' setting.
+       # measurement_column = ""
+
+       ## Column name containing the time of the measurement
+       ## If ommited, the time of the query will be used.
+       time_column = "event_time"
+
+     [[inputs.sql.query]]
+       ## Query to perform on the server
+       query="SELECT database, table,partition_id, count(1) as parts_per_partition, sum(rows) as num_rows, sum(bytes_on_disk) as size_on_disk, sum(data_compressed_bytes) as compressed_size, sum(data_uncompressed_bytes) as uncompressed_size, max(modification_time) AS latest_modification, any(engine) as engine, sum(primary_key_bytes_in_memory) as primary_keys_size FROM cluster('${CH_CLUSTER}', system.parts) WHERE active=1 and database != 'system' GROUP BY 1,2,3"
+       ## Alternatively to specifying the query directly you can select a file here containing the SQL query.
+       ## Only one of 'query' and 'query_script' can be specified!
+       # query_script = "/path/to/sql/script.sql"
+
+       ## Name of the measurement
+       ## In case both measurement and 'measurement_col' are given, the latter takes precedence.
+       measurement = "clickhouse_parts"
+
+       #      [[inputs.sql.query]]
+       #        ## Query to perform on the server
+       #        query="select * from clusterAllReplicas('${CH_CLUSTER}', 'system.disks')"
+       #        ## Alternatively to specifying the query directly you can select a file here containing the SQL query.
+       #        ## Only one of 'query' and 'query_script' can be specified!
+       #        # query_script = "/path/to/sql/script.sql"
+       #
+       #        ## Name of the measurement
+       #        ## In case both measurement and 'measurement_col' are given, the latter takes precedence.
+       #        measurement = "clickhouse_disks"
+     [[inputs.sql.query]]
+       measurement = "clickhouse_detached_parts"
+       query = "SELECT database,table,name,bytes_on_disk,modification_time,disk,path,CAST(ifNull(reason, '') AS String) AS reason,CAST(ifNull(min_block_number,0) AS Int64) AS min_block_number,CAST(ifNull(max_block_number,0) AS Int64) AS max_block_number,CAST(ifNull(level,0) AS UInt32) AS level,CAST(ifNull(partition_id, '') AS String) AS partition_id FROM system.detached_parts"
+
+
+
+    [[inputs.kube_inventory]]
+      bearer_token = "/var/run/secrets/kubernetes.io/serviceaccount/token"
+      namespace = ""
+      resource_exclude = [ "endpoints","ingress"]
+      insecure_skip_verify = true
+      interval = "60s"
+      url = "https://kubernetes.default:443"
+    [[inputs.jolokia2_agent]]
+    ## An array of Kafka servers URI to gather stats.
+      urls = ["KAFKA_URL"]
+      name_prefix = "kafka_"
+      interval = "10s"
+    ## List of metrics collected on above servers
+    ## Each metric consists of a name, a jmx path and
+    ## optionally, a list of fields to collect.
+    ## This collects all heap memory usage metrics.
+    [[inputs.jolokia2_agent.metric]]
+      name = "heap_memory_usage"
+      mbean  = "java.lang:type=Memory"
+      paths = ["HeapMemoryUsage","NonHeapMemoryUsage"]
+    ## This collects thread counts metrics.
+    [[inputs.jolokia2_agent.metric]]
+      name = "thread_count"
+      mbean  = "java.lang:type=Threading"
+      paths = ["TotalStartedThreadCount","ThreadCount","DaemonThreadCount","PeakThreadCount"]
+    ## This collects Memory usage metrics
+    [[inputs.jolokia2_agent.metric]]
+      name = "memory_pool"
+      mbean = "java.lang:type=MemoryPool,name=*"
+      Paths = ["Usage","PeakUsage"]
+      tag_keys = ["name"]
+    ## This collects garbage collection metrics.
+    [[inputs.jolokia2_agent.metric]]
+      name = "garbage_collector"
+      mbean  = "java.lang:type=GarbageCollector,name=*"
+      paths = ["CollectionCount","CollectionTime"]
+      tag_keys = ["name"]
+    [[inputs.jolokia2_agent.metric]]
+      name         = "Broker_Topic_Metrics"
+      mbean        = "kafka.server:type=BrokerTopicMetrics,name=BytesInPerSec,topic=*"
+      tag_keys     = ["topic","name"]
+    [[inputs.jolokia2_agent.metric]]
+      name         = "Broker_Topic_Metrics"
+      mbean        = "kafka.server:type=BrokerTopicMetrics,name=BytesOutPerSec,topic=*"
+      tag_keys     = ["topic","name"]
+    [[inputs.jolokia2_agent.metric]]
+      name         = "Broker_Topic_Metrics"
+      mbean        = "kafka.server:type=BrokerTopicMetrics,name=MessagesInPerSec,topic=*"
+      tag_keys     = ["topic","name"]
+    [[inputs.jolokia2_agent.metric]]
+      name         = "Broker_Topic_Metrics"
+      mbean        = "kafka.server:name=TotalProduceRequestsPerSec,type=BrokerTopicMetrics"
+      tag_keys     = ["name"]
+    [[inputs.jolokia2_agent.metric]]
+      name         = "Broker_Topic_Metrics"
+      mbean        = "kafka.server:name=TotalFetchRequestsPerSec,type=BrokerTopicMetrics"
+      tag_keys     = ["name"]
+    [[inputs.jolokia2_agent.metric]]
+      name         = "Broker_Topic_Metrics"
+      mbean        = "kafka.server:name=FailedProduceRequestsPerSec,type=BrokerTopicMetrics"
+      tag_keys     = ["name"]
+    [[inputs.jolokia2_agent.metric]]
+      name         = "Broker_Topic_Metrics"
+      mbean        = "kafka.server:name=FailedFetchRequestsPerSec,type=BrokerTopicMetrics"
+      tag_keys     = ["name"]
+    [[inputs.jolokia2_agent.metric]]
+      name         = "DelayedOperationPurgatory"
+      mbean        = "kafka.server:type=DelayedOperationPurgatory,name=PurgatorySize,delayedOperation=Produce"
+      tag_keys     = ["delayedOperation"]
+    [[inputs.jolokia2_agent.metric]]
+      name         = "DelayedOperationPurgatory"
+      mbean        = "kafka.server:type=DelayedOperationPurgatory,name=PurgatorySize,delayedOperation=Fetch"
+      tag_keys     = ["delayedOperation"]
+    [[inputs.jolokia2_agent.metric]]
+      name         = "ReplicaManager"
+      mbean        = "kafka.server:type=ReplicaManager,name=UnderReplicatedPartitions"
+      tag_keys     = ["name"]
+    [[inputs.jolokia2_agent.metric]]
+      name         = "ReplicaManager"
+      mbean        = "kafka.server:type=ReplicaManager,name=IsrShrinksPerSec"
+      tag_keys     = ["name"]
+    [[inputs.jolokia2_agent.metric]]
+      name         = "ReplicaManager"
+      mbean        = "kafka.server:type=ReplicaManager,name=IsrExpandsPerSec"
+      tag_keys     = ["name"]
+    [[inputs.jolokia2_agent.metric]]
+      name         = "ControllerStats"
+      mbean        = "kafka.controller:type=ControllerStats,name=LeaderElectionRateAndTimeMs"
+      tag_keys     = ["name"]
+    [[inputs.jolokia2_agent.metric]]
+      name         = "KafkaController"
+      mbean        = "kafka.controller:type=KafkaController,name=GlobalTopicCount"
+      tag_keys     = ["name"]
+    [[inputs.jolokia2_agent.metric]]
+      name         = "KafkaController"
+      mbean        = "kafka.controller:type=KafkaController,name=GlobalPartitionCount"
+      tag_keys     = ["name"]
+    [[inputs.jolokia2_agent.metric]]
+      name         = "ReplicaManager"
+      mbean        = "kafka.server:type=ReplicaManager,name=PartitionCount"
+      tag_keys     = ["name"]
+    [[inputs.jolokia2_agent.metric]]
+      name         = "ReplicaManager"
+      mbean        = "kafka.server:type=ReplicaManager,name=LeaderCount"
+      tag_keys     = ["name"]
+    [[inputs.jolokia2_agent.metric]]
+      name         = "ControllerStats"
+      mbean        = "kafka.controller:type=ControllerStats,name=UncleanLeaderElectionsPerSec"
+      tag_keys     = ["name"]
+    [[inputs.jolokia2_agent.metric]]
+      name         = "KafkaController"
+      mbean        = "kafka.controller:type=KafkaController,name=ActiveControllerCount"
+      tag_keys     = ["name"]
+    [[inputs.jolokia2_agent.metric]]
+      name         = "KafkaController"
+      mbean        = "kafka.controller:type=KafkaController,name=OfflinePartitionsCount"
+      tag_keys     = ["name"]
+    [[inputs.jolokia2_agent.metric]]
+      name         = "RequestMetrics"
+      mbean        = "kafka.network:type=RequestMetrics,name=TotalTimeMs,request=Produce"
+      tag_keys     = ["name","request"]
+    [[inputs.jolokia2_agent.metric]]
+      name         = "RequestMetrics"
+      mbean        = "kafka.network:type=RequestMetrics,name=TotalTimeMs,request=FetchConsumer"
+      tag_keys     = ["name","request"]
+    [[inputs.jolokia2_agent.metric]]
+      name         = "RequestMetrics"
+      mbean        = "kafka.network:type=RequestMetrics,name=TotalTimeMs,request=FetchFollower"
+      tag_keys     = ["name","request"]
+    [[inputs.jolokia2_agent.metric]]
+      name         = "RequestMetrics"
+      mbean        = "kafka.network:type=RequestMetrics,name=RequestsPerSec,request=Produce,version=9"
+      tag_keys     = ["name","request"]
+    [[inputs.jolokia2_agent.metric]]
+      name         = "RequestMetrics"
+      mbean        = "kafka.network:type=RequestMetrics,name=RequestsPerSec,request=FetchConsumer,version=11"
+      tag_keys     = ["name","request"]
+    [[inputs.jolokia2_agent.metric]]
+      name         = "RequestMetrics"
+      mbean        = "kafka.network:type=RequestMetrics,name=RequestsPerSec,request=FetchFollower,version=11"
+      tag_keys     = ["name","request"]
+    [[inputs.jolokia2_agent.metric]]
+      name         = "Producer_Topic_Metrics"
+      mbean        = "kafka.producer:type=producer-topic-metrics,client-id=*,topic=*"
+      tag_keys     = ["topic","client-id"]
+    [[inputs.jolokia2_agent.metric]]
+      name         = "Consumer_Fetch_Manager_Metrics"
+      mbean        = "kafka.consumer:type=consumer-fetch-manager-metrics,client-id=*"
+      tag_keys     = ["client-id"]
+    [[inputs.jolokia2_agent.metric]]
+      name         = "Consumer_Metrics"
+      mbean        = "kafka.consumer:type=consumer-metrics,client-id=([-.w]+)"
+      tag_keys     = ["client-id"]
+    [[inputs.jolokia2_agent.metric]]
+      name         = "ReplicaManager"
+      mbean        = "kafka.server:name=UnderMinIsrPartitionCount,type=ReplicaManager"
+      tag_keys     = ["name"]
+    [[inputs.jolokia2_agent.metric]]
+      name         = "KafkaRequestHandlerPool"
+      mbean        = "kafka.server:name=RequestHandlerAvgIdlePercent,type=KafkaRequestHandlerPool"
+      tag_keys     = ["name"]
+    [[inputs.jolokia2_agent.metric]]
+      name         = "RequestChannel"
+      mbean        = "kafka.network:name=RequestQueueSize,type=RequestChannel"
+      tag_keys     = ["name"]
+    [[inputs.jolokia2_agent.metric]]
+      name         = "SocketServer"
+      mbean        = "kafka.network:name=NetworkProcessorAvgIdlePercent,type=SocketServer"
+      tag_keys     = ["name"]
+    [[inputs.jolokia2_agent.metric]]
+      name         = "StreamsThreadMetrics"
+      mbean        = "kafka.streams:type=stream-thread-metrics,thread-id=*"
+      tag_keys     = ["name"]
+    [[inputs.jolokia2_agent.metric]]
+      name         = "StreamsThreadPollMetrics"
+      mbean        = "kafka.consumer:type=consumer-metrics,client-id=*"
+      tag_keys     = ["name"]
+    [[inputs.jolokia2_agent]]
+      ## An array of Kafka servers URI to gather stats.
+      urls = ["http://connect:8779/jolokia"]
+      name_prefix = "kafka_connect_"
+      interval = "10s"
+    [[inputs.jolokia2_agent.metric]]
+      name = "ConnectMetrics"
+      mbean  = "kafka.connect:type=connect-metrics,client-id=*"
+      paths = ["connection-count","connection-creation-total","incoming-byte-total","outgoing-byte-total","request-total","response-total"]
+      tag_keys = ["client-id"]
+
+    [[inputs.jolokia2_agent.metric]]
+      name = "ConnectWorkerMetrics"
+      mbean  = "kafka.connect:type=connect-worker-metrics"
+      paths = ["connector-count","connector-startup-attempts-total","connector-startup-failure-total","connector-startup-success-total",
+            "task-count","task-startup-attempts-total","task-startup-failure-total","task-startup-success-total"]
+
+    [[inputs.jolokia2_agent.metric]]
+      name = "ConnectorWorkerMetrics"
+      mbean  = "kafka.connect:type=connect-worker-metrics,connector=*"
+      paths = ["connector-total-task-count","connector-failed-task-count","connector-running-task-count"]
+      tag_keys = ["connector"]
+
+    [[inputs.jolokia2_agent.metric]]
+      name = "ConnectNodeMetrics"
+      mbean = "kafka.connect:type=connect-node-metrics,client-id=*,node-id=*"
+      paths = ["incoming-byte-rate","incoming-byte-total","outgoing-byte-rate","outgoing-byte-total","request-rate","request-total",
+            "request-latency-avg","request-latency-max","response-rate","response-total"]
+      tag_keys = ["client-id","node-id"]
+
+    [[inputs.jolokia2_agent.metric]]
+      name = "ConnectWorkerRebalanceMetrics"
+      mbean = "kafka.connect:type=connect-worker-rebalance-metrics"
+      paths = ["completed-rebalances-total","connect-protocol","leader-name","rebalance-avg-time-ms","rebalance-max-time-ms",
+            "time-since-last-rebalance-ms","epoch","rebalancing"]
+
+    [[inputs.jolokia2_agent.metric]]
+      name = "ConnectorMetrics"
+      mbean = "kafka.connect:type=connector-metrics,connector=*"
+      paths = ["connector-class","connector-type","connector-version","status"]
+      tag_keys = ["connector"]
+
+    [[inputs.jolokia2_agent.metric]]
+      name = "ConnectorTaskMetrics"
+      mbean = "kafka.connect:type=connector-task-metrics,connector=*,task=*"
+      paths = ["batch-size-avg","batch-size-max","offset-commit-avg-time-ms","offset-commit-failure-percentage","offset-commit-max-time-ms",
+            "offset-commit-success-percentage","running-ratio","status"]
+      tag_keys = ["connector","task"]
+
+    [[inputs.jolokia2_agent.metric]]
+      name = "SourceTaskMetrics"
+      mbean = "kafka.connect:type=source-task-metrics,connector=*,task=*"
+      paths = ["poll-batch-avg-time-ms","poll-batch-max-time-ms","source-record-active-count","source-record-poll-rate",
+            "source-record-poll-total","source-record-write-rate","source-record-write-total"]
+      tag_keys = ["connector","task"]
+
+    [[inputs.jolokia2_agent.metric]]
+      name = "SinkTaskMetrics"
+      mbean = "kafka.connect:type=sink-task-metrics,connector=*,task=*"
+      paths = ["offset-commit-completion-rate","offset-commit-completion-total","offset-commit-seq-no","partition-count",
+            "put-batch-avg-time-ms","put-batch-max-time-ms","sink-record-active-count","sink-record-read-rate",
+            "sink-record-read-total","sink-record-send-rate","sink-record-send-total"]
+      tag_keys = ["connector","task"]
+    [[processors.topk]]
+    # see: https://github.com/influxdata/telegraf/blob/1.7.0/docs/CONFIGURATION.md#processor-configuration
+      namepass = ["*procstat*"]
+      fields = [
+      "cpu_time_user",
+      "cpu_usage",
+      "memory_rss",
+      ]
+    [[processors.regex]]
+      namepass = ["*procstat*"]
+    [[processors.regex.tags]]
+      key = "process_name"
+      pattern = "^(.{60}).*"
+      replacement = "${1}..."
+
+
+
+
+
+  # Provide a literal TOML config
+  # toml: |+
+  #   [global_tags]
+  #     foo = "bar"
+  #   [agent]
+  #     interval = "10s"
+  #   [[inputs.mem]]
+  #   [[outputs.influxdb_v2]]
+  #     urls           = ["https://us-west-2-1.aws.cloud2.influxdata.com"]
+  #     bucket         = "data"
+  #     organization   = "OurCompany"
+  #     token          = "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
+## Exposed telegraf configuration
+## ref: https://docs.influxdata.com/telegraf/v1.13/administration/configuration/
+config:
+  # global_tags:
+  #   cluster: "mycluster"
+  agent:
+    interval: "60s"
+    round_interval: true
+    metric_batch_size: 1000
+    metric_buffer_limit: 10000
+    collection_jitter: "0s"
+    flush_interval: "60s"
+    flush_jitter: "0s"
+    precision: ""
+    debug: false
+    quiet: false
+    logfile: ""
+    hostname: "$HOSTNAME"
+    omit_hostname: false
+  inputs:
+  processors:
+  outputs:
+  monitor_self: false
+  docker_endpoint: ""
+pvMapping: {}

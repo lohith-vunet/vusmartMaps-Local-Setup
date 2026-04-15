@@ -1,0 +1,21 @@
+
+
+{{- if  .Values.ingressRoute.dashboard.enableMiddleware }}
+
+apiVersion: traefik.io/v1alpha1
+kind: Middleware
+metadata:
+  {{- with (index .Values.ingressRoute.dashboard.middlewares 4) }}
+  name: {{ .name }}
+  {{- end }}
+  namespace: {{ template "traefik.namespace" . }}
+  labels:
+    {{- include "traefik.labels" . | nindent 4 }}
+    {{- with .Values.deployment.labels }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
+spec:
+  headers:
+    contentSecurityPolicy: "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; connect-src 'self'; img-src 'self' https://*.cartocdn.com https://tile.openstreetmap.org https://*.arcgisonline.com blob: data:; frame-src 'self'; style-src 'self' 'unsafe-inline';"
+
+{{- end }}

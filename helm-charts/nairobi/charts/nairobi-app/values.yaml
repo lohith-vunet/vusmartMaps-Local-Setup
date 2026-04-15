@@ -1,0 +1,525 @@
+# vulauncher will update this section while deployment
+vunet:
+  imageServer: &imageServer ghcr.io
+  imageName: &imageName vunetsystems/nairobi
+    #imageTag: &imageTag 2.16.0.1981
+  imageTag: &imageTag 2.16.0.1981
+  # cpu and memory min and max values
+  resources: &resources
+    limits:
+      cpu: "0.5"
+      memory: 2Gi
+    requests:
+      cpu: "0.3"
+      memory: 500Mi
+  # priority node labels
+  nodeAffinity: &nodeAffinity {}
+  # tolerations
+  tolerations: &tolerations []
+  # number of pods to run
+  replicas: &replicas 1
+  # pvc size that will be claimed. For nairobi, we will use default storage
+  # others will have zero values.
+  hot:
+    size: &hotSize ""
+    enabled: &hotEnabled false
+    encrypted: &hotEncrypted false
+    storageclass: &hotStorageClass ""
+  warm:
+    size: &warmSize ""
+    enabled: &warmEnabled false
+    encrypted: &warmEncrypted false
+    storageclass: &warmStorageClass ""
+  cold:
+    size: &coldSize ""
+    enabled: &coldEnabled false
+    encrypted: &coldEncrypted false
+    storageclass: &coldStorageClass ""
+  default:
+    size: &defaultSize 2Gi
+    enabled: &defaultEnabled true
+    encrypted: &defaultEncrypted false
+    storageclass: &defaultStorageClass longhorn-default
+  default-replica:
+    size: &defaultReplicaSize ""
+    enabled: &defaultReplicaEnabled false
+    encrypted: &defaultReplicaEncrypted false
+    storageclass: &defaultReplicaStorageClass ""
+  host:
+    size: &hostSize ""
+    enabled: &hostEnabled false
+    encrypted: &hostEncrypted false
+    storageclass: &hostStorageClass ""
+  # ghcr credentials
+  pullSecretName: &pullSecretName ghcr-login-secret
+  # loadbalancer IP information
+  loadbalancer: &loadbalancer []
+  #
+  # dependencies will be list of helm chart path, which would be required for the current
+  # chart. We will install its dependant helm charts first, then current helm chart
+  # will be installed
+  dependencies: []
+posthook:
+  repository: ghcr.io
+  imageName: vunetsystems/vunet-registry-postjob
+  imageTag: 1.4
+address:
+  private: traefik/vui
+  proto: https://
+  # This value will be updated during the deployment via vuLauncher
+  public: 216.48.185.161/vui
+admin:
+  existingSecret: ""
+  existingSecretPasswordKey: password
+  password: cGFzc3dvcmQ=
+  user: admin
+affinity:
+  create: false
+clusterDomain: cluster.local
+commonAnnotations: {}
+commonLabels: {}
+config:
+  grafanaIniConfigMap: ""
+  grafanaIniSecret: ""
+  useGrafanaIniFile: false
+configMap:
+  create: false
+dashboardports:
+  create: false
+dashboardsConfigMaps: []
+dashboardsProvider:
+  configMapName: ""
+  enabled: false
+datasources:
+  secretDefinition: {}
+  secretName: ""
+diagnosticMode:
+  args:
+    - infinity
+  command:
+    - sleep
+  enabled: false
+envfromconfigMap:
+  create: false
+externalTrafficPolicynairobiservice:
+  create: false
+extraDeploy: []
+fullnameOverride: ""
+global:
+  imagePullSecrets:
+    - name: *pullSecretName
+  imageRegistry: ""
+  storageClass: ""
+grafana:
+  affinity:
+    nodeAffinity: *nodeAffinity
+  args: []
+  command: []
+  containerPorts:
+    grafana: 3000
+  containerSecurityContext:
+    enabled: true
+    runAsUser: 1000
+    privileged: false
+    allowPrivilegeEscalation: false # Prevent privilege escalation
+    readOnlyRootFilesystem: true
+    runAsNonRoot: true
+    capabilities:
+      drop: ["ALL"]
+  customLivenessProbe: {}
+  customReadinessProbe: {}
+  customStartupProbe: {}
+  extraConfigmaps:
+    - mountPath: /etc/grafana/provisioning/datasources/ds.yml
+      name: vunet-datasource
+      subPath: ds.yml
+  extraEnvVars: []
+  extraEnvVarsCM: ""
+  extraEnvVarsSecret: ""
+  extraVolumeMounts: []
+  extraVolumes: []
+  hostAliases: []
+  initContainers: []
+  lifecycleHooks: {}
+  livenessProbe:
+    enabled: true
+    failureThreshold: 6
+    initialDelaySeconds: 120
+    path: /api/health
+    periodSeconds: 10
+    scheme: HTTP
+    successThreshold: 1
+    timeoutSeconds: 5
+  nodeAffinityPreset:
+  nodeSelector: {}
+  podAffinityPreset: ""
+  podAnnotations: {}
+  podAntiAffinityPreset: ""
+  podLabels: {}
+  podSecurityContext:
+    enabled: true
+    fsGroup: 1000
+    runAsGroup: 1000
+    runAsNonRoot: true
+    runAsUser: 1000
+    seccompProfile:
+      type: RuntimeDefault
+  priorityClassName: ""
+  readinessProbe:
+    enabled: true
+    failureThreshold: 6
+    initialDelaySeconds: 30
+    path: /api/health
+    periodSeconds: 10
+    scheme: HTTP
+    successThreshold: 1
+    timeoutSeconds: 5
+  replicaCount: *replicas
+  resources: *resources
+  schedulerName: ""
+  sidecars: []
+  startupProbe:
+    enabled: false
+    failureThreshold: 6
+    initialDelaySeconds: 30
+    path: /api/health
+    periodSeconds: 10
+    scheme: HTTP
+    successThreshold: 1
+    timeoutSeconds: 5
+  terminationGracePeriodSeconds: ""
+  tolerations: *tolerations
+  topologySpreadConstraints: []
+  updateStrategy:
+    type: RollingUpdate
+image:
+  digest: ""
+  pullPolicy: IfNotPresent
+  pullSecrets:
+    - name: *pullSecretName
+  repository: *imageServer
+  name: *imageName
+  tag: *imageTag
+imagePullSecrets:
+  - name: *pullSecretName
+imageRenderer:
+  affinity: {}
+  args: []
+  command: []
+  containerSecurityContext:
+    enabled: true
+    capabilities:
+      drop: ["ALL"]
+    runAsUser: 1001
+    readOnlyRootFilesystem: true
+    runAsNonRoot: true
+    privileged: false
+    seccompProfile:
+      type: RuntimeDefault
+    allowPrivilegeEscalation: false # Prevent privilege escalation
+  enabled: false
+  extraEnvVars: []
+  extraEnvVarsCM: ""
+  extraEnvVarsSecret: ""
+  extraVolumeMounts: []
+  extraVolumes: []
+  hostAliases: []
+  image:
+    digest: ""
+    pullPolicy: IfNotPresent
+    pullSecrets:
+      - name: ghcr-login-secret
+    registry: docker.io
+    repository: bitnami/grafana-image-renderer
+    tag: 3.7.1-debian-11-r7
+  initContainers: []
+  lifecycleHooks: {}
+  metrics:
+    annotations:
+      prometheus.io/path: /metrics
+      prometheus.io/port: "8080"
+      prometheus.io/scrape: "true"
+    enabled: false
+    prometheusRule:
+      additionalLabels: {}
+      enabled: false
+      namespace: ""
+      rules: []
+    serviceMonitor:
+      enabled: false
+      honorLabels: false
+      interval: ""
+      jobLabel: ""
+      labels: {}
+      metricRelabelings: []
+      namespace: ""
+      relabelings: []
+      scrapeTimeout: ""
+      selector: {}
+  nodeAffinityPreset:
+    key: ""
+    type: ""
+    values: []
+  nodeSelector: {}
+  podAffinityPreset: ""
+  podAnnotations: {}
+  podAntiAffinityPreset: soft
+  podLabels: {}
+  podSecurityContext:
+    enabled: true
+    fsGroup: 1001
+    runAsNonRoot: true
+    runAsUser: 1001
+    seccompProfile:
+      type: RuntimeDefault
+  priorityClassName: ""
+  replicaCount: 1
+  resources:
+    limits:
+      cpu: "4000m"
+      memory: "3Gi"
+    requests:
+      cpu: "1000m"
+      memory: "512Mi"
+  schedulerName: ""
+  service:
+    annotations: {}
+    clusterIP: ""
+    externalTrafficPolicy: Cluster
+    extraPorts: []
+    loadBalancerIP: ""
+    loadBalancerSourceRanges: []
+    nodePorts:
+      grafana: ""
+    ports:
+      imageRenderer: 8080
+    sessionAffinity: None
+    sessionAffinityConfig: {}
+    type: ClusterIP
+  sidecars: []
+  terminationGracePeriodSeconds: ""
+  tolerations: []
+  topologySpreadConstraints: []
+  updateStrategy:
+    type: RollingUpdate
+ingress:
+  annotations: {}
+  apiVersion: ""
+  enabled: false
+  extraHosts: []
+  extraPaths: []
+  extraRules: []
+  extraTls: []
+  hostname: grafana.local
+  ingressClassName: ""
+  path: /
+  pathType: ImplementationSpecific
+  secrets: []
+  selfSigned: false
+  tls: false
+kubeVersion: ""
+ldap:
+  allowSignUp: false
+  basedn: ""
+  binddn: ""
+  bindpw: ""
+  configMapName: ""
+  configuration: ""
+  enabled: false
+  extraConfiguration: ""
+  searchAttribute: uid
+  searchFilter: ""
+  secretName: ""
+  tls:
+    CAFilename: ""
+    certFilename: ""
+    certKeyFilename: ""
+    certificatesMountPath: /opt/bitnami/grafana/conf/ldap/
+    certificatesSecret: ""
+    enabled: false
+    skipVerify: false
+    startTls: false
+  uri: ""
+livenessreadinessProbe:
+  create: false
+maxWorkers: 5
+metrics:
+  enabled: false
+  prometheusRule:
+    additionalLabels: {}
+    enabled: false
+    namespace: ""
+    rules: []
+  service:
+    annotations:
+      prometheus.io/path: /metrics
+      prometheus.io/port: "3000"
+      prometheus.io/scrape: "true"
+  serviceMonitor:
+    enabled: false
+    honorLabels: false
+    interval: ""
+    jobLabel: ""
+    labels: {}
+    metricRelabelings: []
+    namespace: ""
+    relabelings: []
+    scrapeTimeout: ""
+    selector: {}
+nairobi:
+  DATASTORE_LABEL: vunet
+  alertingEnabled: "false"
+  authAnonymousName: Vunet Systems Pvt Ltd
+  authDisableLoginForm: "true"
+  authGenericOAuthAPIURL: https://traefik/realms/vunet/protocol/openid-connect/userinfo
+  authGenericOAuthAllowSignUp: "true"
+  authGenericOAuthAuthURL: /realms/vunet/protocol/openid-connect/auth
+  authGenericOAuthClientID: nairobi
+  authGenericOAuthEnabled: "true"
+  authGenericOAuthLoginAttributePath: preferred_username
+  authGenericOAuthName: vuSmartMaps
+  authGenericOAuthNameAttributePath: concat(given_name, ' ', family_name)
+  authGenericOAuthRoleAttributePath: sort_by([privilege |[] [ends_with(@, 'dashboards:admin') && 'Admin' || ends_with(@, 'dataSource:write') && 'Editor' ||  ends_with(@, 'dashboards:write') && 'Editor' || 'Viewer'],  realm_access.roles | [][contains(@, 'admin') && 'Admin' || 'Viewer']][][],  &@)[0]
+  authGenericOAuthScopes: openid email offline_access
+  authGenericOAuthSkipVerifyInsecure: "true"
+  authInactivity: "900000"
+  authLoginMaximunInactiveLifetimeDuration: 1d
+  authOAuthAutoLogin: "true"
+  authOauthAllowInsecureEmailLookup: "true"
+  authSignOutRedirectURL: /realms/vunet/protocol/openid-connect/logout?post_logout_redirect_uri=%2Fvui%2Fpublic%2Fviews%2Flogout.html&client_id=nairobi
+  dataStoreLabel: vunet
+  databaseType: postgres
+  exploreEnable: "true"
+  localtimeMountPath: /etc/localtime:ro
+  localtimePath: /etc/localtime
+  logLevel: debug
+  nodeAffinity:
+    keyPlaceholder: kubernetes.io/hostname
+    valuePlaceholder1: kind-control-plane
+  pathsPlugins: /plugins
+  pluginsAllowLoading: vusmartmaps-app,vunet-datasource,vucoreml-app,vulogdna-app,insight-panel,vumatrix-panel,utm-panel,nav1-app,nav2-app,nav3-app,nav4-app,nav5-app,nav6-app
+  provisioningMountPath: /etc/grafana/provisioning/datasources
+  provisioningPath: /data/vusmartmaps/configs/grafana/provisioning/datasources
+  renderingCallbackURL: http://nairobi:3000/vui
+  renderingServerURL: http://renderer:8081/render
+  restartPolicy: Always
+  securityAllowEmbedding: "true"
+  serverServeFromSubPath: "true"
+  timezone: Asia/Kolkata
+  unifiedAlertingEnabled: "false"
+  updateStrategyMaxSurge: 1
+  updateStrategyMaxUnavailable: 0
+  usersDefaultTheme: light
+  tracingOTLPAddress: ""
+nairobihelmannotations:
+  create: false
+nairobihelmlabels:
+  create: true
+nairobihelmmatchLebales:
+  create: false
+nairobiinitContainer:
+  create: false
+nairobiservice:
+  selector:
+    app: nairobi-1
+nairobiservicelabels:
+  create: false
+nairobiserviceselectorsfromhelm:
+  create: false
+nameOverride: ""
+notifiers:
+  configMapName: ""
+persistence:
+  hot:
+    enabled: *hotEnabled
+    dataDirSize: *hotSize
+    storageClass: *hotStorageClass
+  warm:
+    enabled: *warmEnabled
+    dataDirSize: *warmSize
+    storageClass: *warmStorageClass
+  cold:
+    enabled: *coldEnabled
+    dataDirSize: *coldSize
+    storageClass: *coldStorageClass
+  defaultReplica:
+    enabled: *defaultReplicaEnabled
+    dataDirSize: *defaultReplicaSize
+    storageClass: *defaultReplicaStorageClass
+  default:
+    enabled: *defaultEnabled
+    dataDirSize: *defaultSize
+    storageClass: *defaultStorageClass
+  host:
+    enabled: *hostEnabled
+    dataDirSize: *hostSize
+    storageClass: *hostStorageClass
+  accessMode: ReadWriteOnce
+  accessModes: []
+  annotations: {}
+  enabled: true
+  existingClaim: ""
+  # size: *defaultSize
+  # storageClass: *defaultStorageClass
+plugins: ""
+secretlabels:
+  create: false
+securitycontext:
+  create: true
+service:
+  annotations: {}
+  clusterIP: ""
+  externalTrafficPolicy: Cluster
+  extraPorts: []
+  loadBalancerIP: ""
+  loadBalancerSourceRanges: []
+  ports:
+    grafana: 3000
+  sessionAffinity: false
+  sessionAffinityConfig: {}
+  targetPort: 3000
+  type: ClusterIP
+serviceAccount:
+  annotations: {}
+  create: true
+  name: "nairobi"
+  automountServiceAccountToken: false
+smtp:
+  enabled: false
+  existingSecret: ""
+  existingSecretPasswordKey: password
+  existingSecretUserKey: user
+  fromAddress: ""
+  fromName: ""
+  host: ""
+  password: password
+  skipVerify: "false"
+  user: user
+strategy:
+  maxSurge: 1
+  maxUnavailable: 0
+  type: RollingUpdate
+volumePermissions:
+  containerSecurityContext:
+    runAsUser: 0
+  enabled: false
+  image:
+    digest: ""
+    pullPolicy: IfNotPresent
+    pullSecrets:
+      - name: *pullSecretName
+    registry: docker.io
+    repository: bitnami/bitnami-shell
+    tag: 11-debian-11-r123
+  imagePullSecrets:
+    - name: *pullSecretName
+  resources:
+    limits: {}
+    requests: {}
+kubectlResources:
+  requests:
+    cpu: "50m"
+    memory: "100Mi"
+  limits:
+    cpu: "100m"
+    memory: "200Mi"

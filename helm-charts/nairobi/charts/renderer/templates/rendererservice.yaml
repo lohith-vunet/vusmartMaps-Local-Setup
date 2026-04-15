@@ -1,0 +1,13 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ .Values.rendererservice.name }}
+spec:
+  type: ClusterIP
+  ports:
+    - port: {{ .Values.rendererservice.port }}
+      targetPort: {{ .Values.rendererservice.targetPort }}
+      name: http
+  selector:
+    app: {{ .Values.rendererservice.appLabel }}
+    organization: vunet

@@ -1,0 +1,173 @@
+# vulauncher will update this section while deployment
+vunet:
+  imageServer: &imageServer ghcr.io
+    #imageServer: &imageServer vunet-registry:5000
+  imageName: &imageName vunetsystems/cairo
+  imageTag: &imageTag 2.16.901
+    #imageTag: &imageTag 2.16.901
+  imagePullSecrets:
+    - name: ghcr-login-secret
+  # cpu and memory min and max values
+  resources: &resources
+    limits:
+      cpu: "0.5"
+      memory: 4Gi
+    requests:
+      cpu: "0.3"
+      memory: 500Mi
+  # priority node labels
+  nodeAffinity: &nodeAffinity {}
+  # tolerations
+  tolerations: &tolerations []
+  # number of pods to run
+  replicas: &replicas 1
+  # pvc details
+  hot:
+    size: &hotSize ""
+    enabled: &hotEnabled false
+    encrypted: &hotEncrypted false
+    storageclass: &hotStorageClass ""
+  warm:
+    size: &warmSize ""
+    enabled: &warmEnabled false
+    encrypted: &warmEncrypted false
+    storageclass: &warmStorageClass ""
+  cold:
+    size: &coldSize ""
+    enabled: &coldEnabled false
+    encrypted: &coldEncrypted false
+    storageclass: &coldStorageClass ""
+  default:
+    size: &defaultSize ""
+    enabled: &defaultEnabled false
+    encrypted: &defaultEncrypted false
+    storageclass: &defaultStorageClass ""
+  default-replica:
+    size: &defaultReplicaSize ""
+    enabled: &defaultReplicaEnabled false
+    encrypted: &defaultReplicaEncrypted false
+    storageclass: &defaultReplicaStorageClass ""
+  host:
+    size: &hostSize ""
+    enabled: &hostEnabled false
+    encrypted: &hostEncrypted false
+    storageclass: &hostStorageClass ""
+  # ghcr credentials
+  pullSecretName: &pullSecretName ghcr-login-secret
+  # loadbalancer IP information
+  loadbalancer: &loadbalancer []
+fullnameOverride: 'dao'
+securityContext:
+  privileged: false #privileged needed for dao since access host filesystem
+  allowPrivilegeEscalation: false # Prevent privilege escalation
+  capabilities:
+    drop: ["ALL"]
+  readOnlyRootFilesystem: true
+  runAsNonRoot: true
+  seccompProfile:
+    type: RuntimeDefault
+podSecurityContext:
+  fsGroup: 1000
+  runAsUser: 1000
+  runAsGroup: 1000
+  runAsNonRoot: true
+  seccompProfile:
+    type: RuntimeDefault
+serviceAccount:
+  # Specifies whether a service account should be created
+  create: true
+  # Annotations to add to the service account
+  annotations: {}
+  # The name of the service account to use.
+  # If not set and create is true, a name is generated using the fullname template
+  name: "dao"
+  roleName: "dao-role"
+  roleBindName: "dao-role-bind"
+  automountServiceAccountToken: true
+posthook:
+  repository: *imageServer
+  imageName: vunetsystems/kubectl
+  imageTag: v2.15.0
+global:
+  extraEnvVars: []
+env:
+  - name: TRAEFIK_IPS
+    value: 216.48.185.161
+  - name: VSMAPS_DOMAIN
+    value: 216.48.185.161
+  - name: HOT_DISK_NAME
+    value: default_encrypted_disk
+  - name: WARM_DISK_NAME
+    value: warm_encrypted_disk
+  - name: COLD_STORE_ENABLED
+    value: "True"
+dao:
+  replicas: *replicas
+  securityContext:
+    fsGroup: 1000
+    runAsUser: 1000
+    runAsGroup: 1000
+  imagePullSecrets:
+    - name: *pullSecretName
+  pullPolicy: IfNotPresent
+  repository: *imageServer
+  name: *imageName
+  tag: *imageTag
+  resources: *resources
+  podAntiAffinityPreset: ""
+  affinity:
+    nodeAffinity: *nodeAffinity
+  tolerations: *tolerations
+  volumeClaims:
+    vsmapsLogs:
+      requests:
+        storage: *defaultSize
+  args:
+    - /bin/bash
+    - -c
+    - "tools/vunode.bash /home/vunet/workspace/cairo /home/vunet/workspace/cairo/configs/vunode_config.yml dao start"
+  # Any environment variables to be overridden come under this key
+  envOverrides:
+  # All celeries to be run come here
+  celery:
+    whatsapp:
+      enable: false
+      autoscale: "5,1"
+    slack:
+      enable: false
+      autoscale: "5,1"
+    teams:
+      enable: false
+      autoscale: "2,1"
+    mail:
+      enable: true
+      autoscale: "10,1"
+    reports:
+      enable: true
+      autoscale: "5,1"
+    vustreams:
+      enable: true
+      autoscale: "5,1"
+  # All services to be executed come under here
+  # For all service names which can be used in section,
+  # please check cairo/configs/vunode_config.yml file
+  services:
+    reports:
+      enable: true
+    user_task:
+      enable: true
+    metrics:
+      enable: true
+    event_correlation:
+      enable: true
+    data_management:
+      enable: true
+kubernetesClusterDomain: cluster.local
+pvMapping: {}
+kubectlResources:
+  requests:
+    cpu: "50m"
+    memory: "100Mi"
+  limits:
+    cpu: "100m"
+    memory: "200Mi"
