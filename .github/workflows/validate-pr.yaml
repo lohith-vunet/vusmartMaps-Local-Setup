@@ -49,7 +49,7 @@ jobs:
         run: |
           for f in cluster-setup/*.yaml; do
             echo "Validating $f..."
-            python3 -c "import yaml; yaml.safe_load(open('$f'))"
+            python3 -c "import yaml; list(yaml.safe_load_all(open('$f')))"
           done
           echo "All manifests valid"
 
