@@ -36,7 +36,7 @@ vunet:
     encrypted: &coldEncrypted false
     storageclass: &coldStorageClass ""
   default:
-    size: &defaultSize 10Gi
+    size: &defaultSize 5Gi
     enabled: &defaultEnabled true
     encrypted: &defaultEncrypted false
     storageclass: &defaultStorageClass local-storage 
@@ -1117,7 +1117,7 @@ readReplicas:
       - ReadWriteOnce
     ## @param readReplicas.persistence.size PVC Storage Request for PostgreSQL volume
     ##
-    size: 8Gi
+    size: 2Gi
     ## @param readReplicas.persistence.annotations Annotations for the PVC
     ##
     annotations: {}
